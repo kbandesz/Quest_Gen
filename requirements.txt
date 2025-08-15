@@ -1,0 +1,6 @@
+streamlit
+pypdf
+mammoth
+python-docx
+tiktoken
+openai>=1.0.0
