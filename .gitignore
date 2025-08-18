@@ -2,6 +2,7 @@
 .venv/
 
 # Ignore local cache files
+__pycache__/
 app/__pycache__/
 
 # Ignore local development environment file
