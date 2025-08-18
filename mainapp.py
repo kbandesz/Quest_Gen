@@ -1,9 +1,13 @@
 
 import streamlit as st, os, uuid
 from typing import List, Dict
+from dotenv import load_dotenv
 from app.parsing import extract_text_and_tokens
 from app.generation import check_alignment, generate_questions
 from app.export import build_docx
+
+# Load environment variables from .env
+load_dotenv() 
 
 BLOOM_LEVELS=["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 
@@ -23,7 +27,7 @@ if "questions" not in st.session_state:
 with st.sidebar:
     if st.button("Reset session"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
 # 1 Upload
 st.header("1) Upload Module Content")

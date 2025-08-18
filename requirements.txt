@@ -2,5 +2,6 @@ streamlit
 pypdf
 mammoth
 python-docx
+python-dotenv
 tiktoken
 openai>=1.0.0

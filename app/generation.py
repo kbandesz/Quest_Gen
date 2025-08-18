@@ -1,8 +1,12 @@
 
 import os
 from typing import Dict, Any
+from dotenv import load_dotenv
 from .prompts import SYSTEM_PROMPT, build_alignment_prompt, build_generation_prompt
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
+
+# Load environment variables from .env
+load_dotenv() 
 
 MOCK_MODE = os.getenv("MOCK_MODE","false").lower() in {"1","true","yes"}
 

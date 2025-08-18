@@ -14,20 +14,19 @@ def build_alignment_prompt(intended_bloom_level: str, lo_text: str, module_text:
 INTENDED_BLOOM_LEVEL: {intended_bloom_level}  // one of: Remember, Understand, Apply, Analyze, Evaluate, Create
 
 LEARNING_OBJECTIVE_TEXT:
-"""
+/"/"/"
 {lo_text}
-"""
+/"/"/"
 
 MODULE_CONTENT (truncated to fit context):
-"""
+/"/"/"
 {module_text}
-"""
+"/"/"/"
 
 OUTPUT JSON SCHEMA:
 {{
   "label": "consistent|ambiguous|inconsistent",
   "reasons": ["string"],
-  "flags": ["multi_verb","vague_verb","unmeasurable","content_mismatch","none"],
   "suggested_lo": "string|null"
 }}
 
@@ -43,17 +42,18 @@ def build_generation_prompt(bloom_level: str, final_lo_text: str, module_text: s
     return f"""TASK: Generate assessment questions aligned to a FINAL learning objective and Bloom level using the provided MODULE CONTENT. Prefer concrete details only if present; otherwise, stay generic but aligned.
 
 BLOOM_LEVEL: {bloom_level}  // Remember|Understand|Apply|Analyze|Evaluate|Create
-FINAL_LEARNING_OBJECTIVE:
-"""
-{final_lo_text}
-"""
 
-N_QUESTIONS: {n_questions}  // 2 or 3
+FINAL_LEARNING_OBJECTIVE:
+/"/"/"
+{final_lo_text}
+"/"/"/"
+
+N_QUESTIONS: {n_questions}
 
 MODULE_CONTENT (truncated to fit context):
-"""
+/"/"/"
 {module_text}
-"""
+"/"/"/"
 
 QUESTION TYPE: MCQ_4
 - 1 correct option, 3 plausible distractors.
@@ -67,10 +67,10 @@ OUTPUT JSON SCHEMA:
       "type": "MCQ_4",
       "stem": "string",
       "options": [
-        {{ "id": "A", "text": "string", "distractor_rationale": "string" }},
-        {{ "id": "B", "text": "string", "distractor_rationale": "string" }},
-        {{ "id": "C", "text": "string", "distractor_rationale": "string" }},
-        {{ "id": "D", "text": "string", "distractor_rationale": "string" }}
+        {{ "id": "A", "text": "string", "option_rationale": "string" }},
+        {{ "id": "B", "text": "string", "option_rationale": "string" }},
+        {{ "id": "C", "text": "string", "option_rationale": "string" }},
+        {{ "id": "D", "text": "string", "option_rationale": "string" }}
       ],
       "correct_option_id": "A",
       "cognitive_rationale": "string",

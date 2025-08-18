@@ -1,0 +1,8 @@
+# Ignore the local virtual environment files
+.venv/
+
+# Ignore local cache files
+app/__pycache__/
+
+# Ignore local development environment file
+.env
