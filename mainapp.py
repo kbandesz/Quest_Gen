@@ -139,7 +139,6 @@ if st.button("Run alignment", disabled= not st.session_state["module_text"] or n
         if lo["alignment"]["label"]=="consistent" and not lo.get("final_text"):
             lo["final_text"]=lo["text"]
 
-#for lo in st.session_state["los"]:
 for i, lo in enumerate(list(st.session_state["los"])):
     if not lo.get("alignment"): continue
     with st.container(border=True):
