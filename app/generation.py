@@ -62,11 +62,11 @@ def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
         ],
         temperature=temperature,
         response_format={"type":"json_object"},
-        max_completion_tokens=max_tokens,
+        max_tokens=max_tokens,
     )
     return parse_json_strict(resp.choices[0].message.content)
 
-def check_alignment(intended_level:str, lo_text:str, module_text:str)->Dict[str,Any]:
+def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:
     if MOCK_MODE:
         # Return a randomized mock scenario to exercise UI branches
         return _mock_alignment_choice(lo_text, intended_level)
@@ -92,8 +92,8 @@ def _mock_questions(n:int=2)->Dict[str,Any]:
         })
     return {"questions":qs}
 
-def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=3)->Dict[str,Any]:
-    n=max(2,min(3,int(n_questions)))
+def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
+    n=min(2,int(n_questions))
     if MOCK_MODE:
         return _mock_questions(n)
     prompt=build_generation_prompt(bloom_level, final_lo_text, module_text, n)

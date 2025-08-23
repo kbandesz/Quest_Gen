@@ -27,6 +27,9 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
 
 
 BLOOM_LEVELS=["Remember","Understand","Apply","Analyze","Evaluate","Create"]
+MODULE_TOKEN_LIMIT = 27000
+
+
 
 st.set_page_config(page_title="Bloom Alignment & Question Generator", page_icon="🧠", layout="wide")
 st.title("Bloom Alignment Analyzer & Question Generator (MVP)")
@@ -34,57 +37,58 @@ st.title("Bloom Alignment Analyzer & Question Generator (MVP)")
 if os.getenv("MOCK_MODE","false").lower() in {"1","true","yes"}:
     st.warning("⚠️ MOCK MODE is ON – all AI responses are canned.")
 
-if "module_text" not in st.session_state:
-    st.session_state["module_text"]=""
-if "module_sig" not in st.session_state:
-    st.session_state["module_sig"]=""
-if "los" not in st.session_state:
-    st.session_state["los"]=[]
-if "questions" not in st.session_state:
-    st.session_state["questions"]={}
+# Initialize session state
+ss = st.session_state
+ss.setdefault("module_text", "")
+ss.setdefault("module_sig", "")
+ss.setdefault("los", [])
+ss.setdefault("questions", {})
+
 
 with st.sidebar:
     if st.button("Reset session"):
-        st.session_state.clear()
+        ss.clear()
         st.rerun()
 
 # 1 Upload Course Content
 st.header("1) Upload Course Material")
 files=st.file_uploader(
-    "Maximum 3 files (PDF, DOCX, TXT)",
+    "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
     type=["pdf","docx","txt"],
     accept_multiple_files=True
-    )
-if files:
-    if len(files)>3:
-        st.error("Please upload at most 3 files.")
-        st.stop()
-    text,tokens=extract_text_and_tokens(files)
-    st.session_state["module_text"]=text
-    st.caption(f"Estimated tokens: {tokens:,}")
-    if tokens>25000:
-        st.error("Module exceeds 25k tokens.")
-        st.stop()
-    st.text_area("Preview", text[:1200], height=150, disabled=True)
+    ) or [] # This is needed to avoid NoneType later
 
-    # ── Invalidate all LOs if module content changed ─────────────────────
-    new_mod_sig = _sig_module(st.session_state["module_text"])
-    prev_mod_sig = st.session_state.get("module_sig")
-    st.session_state["module_sig"] = new_mod_sig
+text,tokens=extract_text_and_tokens(files)
+
+if tokens>MODULE_TOKEN_LIMIT:
+    st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Remove content to proceed.")
+
+st.caption(f"Estimated tokens: {tokens:,}")
+st.text_area("Preview", text[:1200], height=150, disabled=True)
+
+# Only update session + invalidate when within token limit
+prev_mod_sig = ss.get("module_sig")
+if tokens<=MODULE_TOKEN_LIMIT:
+    ss["module_text"] = text
+
+    # Invalidate all LOs if module content changed
+    new_mod_sig = _sig_module(text)
     if prev_mod_sig and prev_mod_sig != new_mod_sig:
-        for lo in st.session_state.get("los", []):
+        for lo in ss.get("los", []):
             lo.pop("alignment", None)
             lo.pop("final_text", None)
             lo.pop("alignment_sig", None)
             lo.pop("generation_sig", None)
-        st.session_state.get("questions", {}).clear()
-        st.info("Module content changed — cleared alignment and questions for all LOs.")
-
+            ss.pop(f"sug_{lo['id']}", None)
+        ss["questions"].clear()
+        if ss.get("los"):
+            st.info("Module content changed — cleared any Bloom alignment and questions.")
+    ss["module_sig"] = new_mod_sig
 
 # 2 Learning Objectives
 st.header("2) Enter Learning Objectives & Intended Bloom Level")
 if st.button("Add Learning Objective"):
-    st.session_state["los"].append({
+    ss["los"].append({
         "id":str(uuid.uuid4()),
         "text":"",
         "intended_level":"Remember",
@@ -94,52 +98,62 @@ if st.button("Add Learning Objective"):
         "generation_sig": None
         })
 
-for i, lo in enumerate(list(st.session_state["los"])):
+for i, lo in enumerate(list(ss["los"])):
     with st.container(border=True):
         prev_text = lo.get("text","")
-        prev_level = lo.get("intended_level","Analyze")
+        prev_level = lo.get("intended_level","Remember")
 
-        lo["text"] = st.text_area(f"**Objective #{i+1}**", value=prev_text, key=f"lo_text_{lo['id']}")
-        lo["intended_level"] = st.selectbox(
-            "Intended Bloom level", BLOOM_LEVELS,
-            index=BLOOM_LEVELS.index(prev_level),
-            key=f"lo_level_{lo['id']}"
-        )        
+        # ---- LO text: seed once, then bind to key (no value= on reruns)
+        lo_text_key = f"lo_text_{lo['id']}"
+        if lo_text_key not in ss:
+            ss[lo_text_key] = prev_text
+        st.text_area(f"**Objective #{i+1}**", key=lo_text_key)
+        lo["text"] = ss[lo_text_key]
 
-        # ── Per-LO invalidation when LO text or intended level changes ────
-        module_sig = st.session_state.get("module_sig","")
+        # ---- Intended level: seed once, then bind to key (avoid index races)
+        lo_level_key = f"lo_level_{lo['id']}"
+        if lo_level_key not in ss:
+            ss[lo_level_key] = prev_level
+        init_idx = BLOOM_LEVELS.index(ss[lo_level_key])
+        st.selectbox("Intended Bloom level", BLOOM_LEVELS, index=init_idx, key=lo_level_key)
+        lo["intended_level"] = ss[lo_level_key]      
+
+        # ---- Per-LO invalidation when LO text or intended level changes ────
+        module_sig = ss.get("module_sig","")
         current_align_sig = _sig_alignment(lo["text"], lo["intended_level"], module_sig)
         prev_align_sig = lo.get("alignment_sig")     
         if prev_align_sig and prev_align_sig != current_align_sig:
             lo.pop("alignment", None)
             lo.pop("final_text", None)
             lo.pop("generation_sig", None)
-            st.session_state["questions"].pop(lo["id"], None)
+            ss["questions"].pop(lo["id"], None)
             lo["alignment_sig"] = None
+
             st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")        
 
 
-        cols=st.columns(3)
-        if cols[0].button("Delete", key=f"del_{lo['id']}"):
-            st.session_state["los"].remove(lo)
+        if st.button("Delete", key=f"del_{lo['id']}"):
+            # Clean up widget state keys for this LO so new LOs seed cleanly
+            ss.pop(lo_text_key, None)
+            ss.pop(lo_level_key, None)
+            ss["los"].remove(lo)
             st.rerun()
-        if cols[1].button("Set final = current", key=f"setfinal_{lo['id']}"):
-            lo["final_text"]=lo["text"]
 
 # 3 Alignment
 st.header("3) Alignment Check")
-if st.button("Run alignment", disabled= not st.session_state["module_text"] or not st.session_state["los"]):
-    for lo in st.session_state["los"]:
-        lo["alignment"]=check_alignment(lo["intended_level"], lo["text"], st.session_state["module_text"])
+# Helper to check if we can run alignment
+def can_run_alignment(ss) -> bool:
+    return bool(ss["module_text"] and ss["los"] and all(lo.get("text") for lo in ss["los"]))
+
+if st.button("Run alignment", disabled=not can_run_alignment(ss)):
+    for lo in ss["los"]:
+        lo["alignment"]=check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
         # store signature for alignment result
         lo["alignment_sig"] = _sig_alignment(
-            lo["text"], lo["intended_level"], st.session_state.get("module_sig","")
-        )         
-        # auto-fill final text if consistent and not set
-        if lo["alignment"]["label"]=="consistent" and not lo.get("final_text"):
-            lo["final_text"]=lo["text"]
+            lo["text"], lo["intended_level"], ss.get("module_sig","")
+        )
 
-for i, lo in enumerate(list(st.session_state["los"])):
+for i, lo in enumerate(list(ss["los"])):
     if not lo.get("alignment"): continue
     with st.container(border=True):
         st.subheader(f"LO #{i+1}: {lo['text'][:80]}")
@@ -149,44 +163,58 @@ for i, lo in enumerate(list(st.session_state["los"])):
         if lo["alignment"]["reasons"]:
             st.markdown("- " + "\n- ".join(lo["alignment"]["reasons"]))
 
-        suggested = lo["alignment"].get("suggested_lo")
-        if suggested:
-            prev_final = lo.get("final_text", suggested)
-            lo["final_text"] = st.text_area("Suggested rewrite (editable)", value=prev_final, key=f"sug_{lo['id']}")
+        # ---- Suggested rewrite: seed once, then bind to key (editable)
+        sug_key = f"sug_{lo['id']}"
+        if sug_key not in ss:
+            ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
+        final = st.text_area("Suggested rewrite (editable)", key=sug_key)
+      
+        
+        if st.button("Accept as final", key=f"accept_{lo['id']}"):
+            lo["final_text"] = final
+            st.success("Accepted. Final LO updated.")
 
             # ── If final_text edited, invalidate questions only ───────────
-            module_sig = st.session_state.get("module_sig","")
-            current_gen_sig = _sig_generation(lo.get("final_text") or lo["text"], lo["intended_level"], module_sig)
+            current_gen_sig = _sig_generation(
+                lo.get("final_text"),
+                lo["intended_level"],
+                ss.get("module_sig","")
+                )
             prev_gen_sig = lo.get("generation_sig")
             if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                st.session_state["questions"].pop(lo["id"], None)
+                ss.pop(f"sug_{lo['id']}", None)
+                ss["questions"].pop(lo["id"], None)
                 lo["generation_sig"] = None
-                st.info("Cleared questions for this LO due to final text change.")            
-            
-            if st.button("Accept suggested as final", key=f"accept_{lo['id']}"):
-                st.success("Accepted. Final LO updated.")
-        else:
-            st.caption(f"No rewrite suggested.")
+                st.info("Cleared questions for this LO due to final text change.")   
+
 
 # 4 Generate
 st.header("4) Generate Questions")
-if st.button("Generate MCQs", disabled= not st.session_state["module_text"] or not st.session_state["los"]):
-    for lo in st.session_state["los"]:
-        final_text = lo.get("final_text") or lo["text"]
-        payload=generate_questions(final_text, lo["intended_level"], st.session_state["module_text"], n_questions=2)
-        st.session_state["questions"][lo["id"]]=payload["questions"]
+# Helper to check if we can run generation
+def can_generate(ss) -> bool:
+    return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
+
+if st.button("Generate MCQs", disabled=not can_generate(ss)):
+    for lo in ss["los"]:
+        payload=generate_questions(
+            lo.get("final_text"),
+            lo["intended_level"],
+            ss["module_text"],
+            n_questions=1
+            )
+        ss["questions"][lo["id"]]=payload["questions"]
         # store signature for question generation
         lo["generation_sig"] = _sig_generation(
-            lo.get("final_text") or lo["text"],
+            lo.get("final_text"),
             lo["intended_level"],
-            st.session_state.get("module_sig","")
+            ss.get("module_sig","")
         )        
 
-for lo in st.session_state["los"]:
-    qs=st.session_state["questions"].get(lo["id"],[])
+for lo in ss["los"]:
+    qs=ss["questions"].get(lo["id"],[])
     if not qs: continue
     with st.container(border=True):
-        st.subheader(f"Questions for LO: {lo.get('final_text') or lo['text'][:40]}...")
+        st.subheader(f"Questions for LO: {lo.get('final_text')[:40]}...")
         for idx,q in enumerate(qs):
             q["stem"]=st.text_area(f"Stem {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}")
             for opt in q["options"]:
@@ -197,6 +225,6 @@ for lo in st.session_state["los"]:
 
 # 5 Export
 st.header("5) Export DOCX")
-if st.button("Download DOCX"):
-    doc=build_docx(st.session_state["los"], st.session_state["questions"])
+if st.button("Download DOCX", disabled= not ss["questions"]):
+    doc=build_docx(ss["los"], ss["questions"])
     st.download_button("Download", data=doc, file_name="assessment_questions.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
