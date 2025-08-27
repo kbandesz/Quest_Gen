@@ -10,6 +10,12 @@ from app.export import build_docx
 # Load environment variables from .env
 load_dotenv()
 
+# Cached file parsing
+@st.cache_data(show_spinner=False)
+def _extract_cached_text_and_tokens(file_keys, files):
+    """Cache extraction results keyed by stable file metadata."""
+    return extract_text_and_tokens(files)
+
 
 # Signatures used for detecting changes in user inputs
 def _sig_module(text: str) -> str:
@@ -58,7 +64,9 @@ files=st.file_uploader(
     accept_multiple_files=True
     ) or [] # This is needed to avoid NoneType later
 
-text,tokens=extract_text_and_tokens(files)
+# Extract text + token count (from cache if available)
+file_keys = [(f.name, f.size, getattr(f, "last_modified", None)) for f in files]
+text, tokens = _extract_cached_text_and_tokens(tuple(file_keys), files)
 
 if tokens>MODULE_TOKEN_LIMIT:
     st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Remove content to proceed.")
