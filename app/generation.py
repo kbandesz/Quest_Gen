@@ -7,7 +7,7 @@ from .prompts import SYSTEM_PROMPT, build_alignment_prompt, build_generation_pro
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
 
 # Load environment variables from .env
-load_dotenv() 
+load_dotenv(override=True) 
 
 MOCK_MODE = os.getenv("MOCK_MODE","false").lower() in {"1","true","yes"}
 

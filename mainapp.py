@@ -8,7 +8,7 @@ from app.generation import check_alignment, generate_questions
 from app.export import build_docx
 
 # Load environment variables from .env
-load_dotenv()
+load_dotenv(override=True)
 
 # Cached file parsing
 @st.cache_data(show_spinner=False)
@@ -72,7 +72,10 @@ if tokens>MODULE_TOKEN_LIMIT:
     st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Remove content to proceed.")
 
 st.caption(f"Estimated tokens: {tokens:,}")
-st.text_area("Preview", text[:1200], height=150, disabled=True)
+
+with st.expander("Preview first 5,000 characters", expanded=False):
+    # key ensures stable widget state when toggling expander
+    st.text_area("Preview", text[:5000], height=150, disabled=True, key="preview_area")
 
 # Only update session + invalidate when within token limit
 prev_mod_sig = ss.get("module_sig")
@@ -136,6 +139,7 @@ for i, lo in enumerate(list(ss["los"])):
             lo.pop("generation_sig", None)
             ss["questions"].pop(lo["id"], None)
             lo["alignment_sig"] = None
+            ss.pop(f"sug_{lo['id']}", None)
 
             st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")        
 
@@ -176,6 +180,7 @@ for i, lo in enumerate(list(ss["los"])):
         if sug_key not in ss:
             ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
         final = st.text_area("Suggested rewrite (editable)", key=sug_key)
+        st.caption("Edits here are not saved until you click **Accept as final**.")
       
         
         if st.button("Accept as final", key=f"accept_{lo['id']}"):
@@ -222,17 +227,22 @@ for lo in ss["los"]:
     qs=ss["questions"].get(lo["id"],[])
     if not qs: continue
     with st.container(border=True):
-        st.subheader(f"Questions for LO: {lo.get('final_text')[:40]}...")
+        st.subheader(f"{lo.get('final_text')}")
         for idx,q in enumerate(qs):
-            q["stem"]=st.text_area(f"Stem {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}")
+            # Question stem
+            q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}")
+            # Answer options
             for opt in q["options"]:
-                opt["text"]=st.text_input(f"({opt['id']})", opt["text"], key=f"opt_{lo['id']}_{idx}_{opt['id']}")
+                opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"], key=f"opt_{lo['id']}_{idx}_{opt['id']}")
+                with st.expander("Feedback", expanded=False):
+                    opt["option_rationale"]=st.text_area(f"Feedback", opt.get("option_rationale",""), key=f"rat_{lo['id']}_{idx}_{opt['id']}", label_visibility="collapsed")
             current=["A","B","C","D"].index(q["correct_option_id"])
             q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
-            q["cognitive_rationale"]=st.text_area("Rationale", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
+            q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""), key=f"ref_{lo['id']}_{idx}")
+            q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
 
 # 5 Export
-st.header("5) Export DOCX")
-if st.button("Download DOCX", disabled= not ss["questions"]):
+st.header("5) Export to Word")
+if st.button("Build DOCX file", disabled=not ss["questions"]):
     doc=build_docx(ss["los"], ss["questions"])
     st.download_button("Download", data=doc, file_name="assessment_questions.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
