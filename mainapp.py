@@ -1,14 +1,13 @@
-
 import streamlit as st, os, uuid
 from typing import List, Dict
 from dotenv import load_dotenv
 import hashlib
 from app.parsing import extract_text_and_tokens
-from app.generation import check_alignment, generate_questions
+from app.generation import check_alignment, generate_questions, set_runtime_config
 from app.export import build_docx
 
 # Load environment variables from .env
-load_dotenv(override=True)
+load_dotenv()
 
 # Cached file parsing
 @st.cache_data(show_spinner=False)
@@ -35,13 +34,9 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
 BLOOM_LEVELS=["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 MODULE_TOKEN_LIMIT = 27000
 
-
-
+# Streamlit app layout
 st.set_page_config(page_title="Bloom Alignment & Question Generator", page_icon="🧠", layout="wide")
 st.title("Bloom Alignment Analyzer & Question Generator (MVP)")
-
-if os.getenv("MOCK_MODE","false").lower() in {"1","true","yes"}:
-    st.warning("⚠️ MOCK MODE is ON – all AI responses are canned.")
 
 # Initialize session state
 ss = st.session_state
@@ -49,11 +44,46 @@ ss.setdefault("module_text", "")
 ss.setdefault("module_sig", "")
 ss.setdefault("los", [])
 ss.setdefault("questions", {})
+ss.setdefault("MOCK_MODE", True)
+ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 
+# Apply runtime config to generation module on each rerun
+set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
+# Banner based on current mock setting
+if ss["MOCK_MODE"]:
+    st.warning(f"⚠️ MOCK MODE is ON — model '{ss['OPENAI_MODEL']}' is not called.")
+
+# Sidebar for settings
 with st.sidebar:
     if st.button("Reset session"):
         ss.clear()
+        st.rerun()
+
+    st.markdown("### Runtime Settings")
+    new_mock = st.toggle("Mock mode", value=ss["MOCK_MODE"])
+    model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
+    new_model = st.selectbox(
+        "OpenAI model",
+        model_options,
+        index=model_options.index(ss["OPENAI_MODEL"])
+    )
+
+    # If settings changed, update config and invalidate downstream state
+    if new_mock != ss["MOCK_MODE"] or new_model != ss["OPENAI_MODEL"]:
+        ss["MOCK_MODE"] = new_mock
+        ss["OPENAI_MODEL"] = new_model
+        set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
+        # Invalidate all LOs and questions
+        for lo in ss.get("los", []):
+            lo.pop("alignment", None)
+            lo.pop("final_text", None)
+            lo.pop("alignment_sig", None)
+            lo.pop("generation_sig", None)
+            ss.pop(f"sug_{lo['id']}", None)
+        ss["questions"].clear()
+        if ss.get("los"):
+            st.info("Settings changed — cleared any Bloom alignment and questions.")
         st.rerun()
 
 # 1 Upload Course Content
