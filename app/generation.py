@@ -1,20 +1,29 @@
 
 import os
-from typing import Dict, Any
 from dotenv import load_dotenv
+from openai import OpenAI
+from typing import Dict, Any
 import random
 from .prompts import SYSTEM_PROMPT, build_alignment_prompt, build_generation_prompt
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
 
-# Load environment variables from .env
-load_dotenv(override=True) 
+# Load OPENAI_API_KEY from .env
+load_dotenv() 
 
-MOCK_MODE = os.getenv("MOCK_MODE","false").lower() in {"1","true","yes"}
+MOCK_MODE = True
+OPENAI_MODEL = "gpt-4.1-nano"
+client = None  # type: ignore
 
-if not MOCK_MODE:
-    from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    OPENAI_MODEL = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+def set_runtime_config(mock_mode: bool, model: str) -> None:
+    """Allow the app to override mock flag and model at runtime."""
+    global MOCK_MODE, OPENAI_MODEL, client
+    MOCK_MODE = bool(mock_mode)
+    OPENAI_MODEL = model or OPENAI_MODEL
+    if not MOCK_MODE:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    else:
+        # entering mock mode: drop the client reference
+        client = None
 
 # ─────────────────────────────────────────────────────────────────────────
 # Mock alignment scenarios (used only when MOCK_MODE is enabled)
@@ -54,6 +63,8 @@ def _mock_alignment_choice(lo_text: str, intended_level: str) -> Dict[str, Any]:
 def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
     if MOCK_MODE:
         return {"mock":"on"}
+    if client is None:
+        set_runtime_config(MOCK_MODE, OPENAI_MODEL)
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
@@ -62,7 +73,7 @@ def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
         ],
         temperature=temperature,
         response_format={"type":"json_object"},
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
     )
     return parse_json_strict(resp.choices[0].message.content)
 
