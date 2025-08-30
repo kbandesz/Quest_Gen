@@ -5,6 +5,15 @@ import hashlib
 from app.parsing import extract_text_and_tokens
 from app.generation import check_alignment, generate_questions, set_runtime_config
 from app.export import build_docx
+from app.constants import (
+    MODULE_TOKEN_LIMIT,
+    LO_WRITING_TIPS,
+    BLOOM_LEVELS,
+    BLOOM_DEFS,
+    BLOOM_VERBS,
+    BLOOM_PYRAMID_IMAGE,
+)
+
 
 # Load environment variables from .env
 load_dotenv()
@@ -30,13 +39,11 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
     payload = f"{final_lo_text}||{intended_level}||{module_sig}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
-
-BLOOM_LEVELS=["Remember","Understand","Apply","Analyze","Evaluate","Create"]
-MODULE_TOKEN_LIMIT = 27000
-
-# Streamlit app layout
+################################################
+# App setup
+################################################
 st.set_page_config(page_title="Bloom Alignment & Question Generator", page_icon="🧠", layout="wide")
-st.title("Bloom Alignment Analyzer & Question Generator (MVP)")
+st.title(":mortar_board: Bloom Alignment Analyzer & Question Generator")
 
 # Initialize session state
 ss = st.session_state
@@ -47,34 +54,26 @@ ss.setdefault("questions", {})
 ss.setdefault("MOCK_MODE", True)
 ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 
-# Apply runtime config to generation module on each rerun
+# Apply runtime config to generation module on each rerun (current values)
 set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Banner based on current mock setting
 if ss["MOCK_MODE"]:
     st.warning(f"⚠️ MOCK MODE is ON — model '{ss['OPENAI_MODEL']}' is not called.")
 
+################################################
 # Sidebar for settings
+################################################
 with st.sidebar:
     if st.button("Reset session"):
         ss.clear()
         st.rerun()
 
-    st.markdown("### Runtime Settings")
-    new_mock = st.toggle("Mock mode", value=ss["MOCK_MODE"])
-    model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
-    new_model = st.selectbox(
-        "OpenAI model",
-        model_options,
-        index=model_options.index(ss["OPENAI_MODEL"])
-    )
-
-    # If settings changed, update config and invalidate downstream state
-    if new_mock != ss["MOCK_MODE"] or new_model != ss["OPENAI_MODEL"]:
-        ss["MOCK_MODE"] = new_mock
-        ss["OPENAI_MODEL"] = new_model
+    # Change handler: apply model/mock and invalidate downstream state
+    def _on_settings_change():
+        # 1) apply to generation runtime
         set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
-        # Invalidate all LOs and questions
+        # 2) invalidate alignment/finals/questions/suggestions
         for lo in ss.get("los", []):
             lo.pop("alignment", None)
             lo.pop("final_text", None)
@@ -82,16 +81,29 @@ with st.sidebar:
             lo.pop("generation_sig", None)
             ss.pop(f"sug_{lo['id']}", None)
         ss["questions"].clear()
-        if ss.get("los"):
-            st.info("Settings changed — cleared any Bloom alignment and questions.")
-        st.rerun()
+        # Flag for optional notice after rerun
+        ss["__settings_changed__"] = True
 
+
+    st.markdown("### Runtime Settings")
+
+    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_settings_change)
+    model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
+    st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL", on_change=_on_settings_change)
+
+    # Show confirmation if settings were just changed
+    if ss.pop("__settings_changed__", False):
+        st.toast("Settings changed — cleared any Bloom alignment and questions.")
+
+################################################
 # 1 Upload Course Content
-st.header("1) Upload Course Material")
+################################################
+st.header("📂 Upload Course Material")
 files=st.file_uploader(
     "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
     type=["pdf","docx","txt"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key="module_files",
     ) or [] # This is needed to avoid NoneType later
 
 # Extract text + token count (from cache if available)
@@ -126,19 +138,20 @@ if tokens<=MODULE_TOKEN_LIMIT:
             st.info("Module content changed — cleared any Bloom alignment and questions.")
     ss["module_sig"] = new_mod_sig
 
+################################################
 # 2 Learning Objectives
-st.header("2) Enter Learning Objectives & Intended Bloom Level")
-if st.button("Add Learning Objective"):
-    ss["los"].append({
-        "id":str(uuid.uuid4()),
-        "text":"",
-        "intended_level":"Remember",
-        "alignment": None,
-        "final_text": None,
-        "alignment_sig": None,
-        "generation_sig": None
-        })
+################################################
+st.header("🎯 Enter Learning Objectives & Intended Bloom Level")
 
+# General LO writing advice (expandable)
+st. markdown(LO_WRITING_TIPS)
+
+# Visual reference (expandable pyramid)
+with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
+    st.image(BLOOM_PYRAMID_IMAGE,
+             use_column_width="auto")
+
+# List of LOs (editable)
 for i, lo in enumerate(list(ss["los"])):
     with st.container(border=True):
         prev_text = lo.get("text","")
@@ -157,7 +170,10 @@ for i, lo in enumerate(list(ss["los"])):
             ss[lo_level_key] = prev_level
         init_idx = BLOOM_LEVELS.index(ss[lo_level_key])
         st.selectbox("Intended Bloom level", BLOOM_LEVELS, index=init_idx, key=lo_level_key)
-        lo["intended_level"] = ss[lo_level_key]      
+        lo["intended_level"] = ss[lo_level_key]
+        # Inline guidance under picker
+        st.caption(f"### ℹ️ {BLOOM_DEFS[lo['intended_level']]}")
+        st.caption(f"**Common verbs:** {BLOOM_VERBS[lo['intended_level']]}")
 
         # ---- Per-LO invalidation when LO text or intended level changes ────
         module_sig = ss.get("module_sig","")
@@ -174,15 +190,30 @@ for i, lo in enumerate(list(ss["los"])):
             st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")        
 
 
-        if st.button("Delete", key=f"del_{lo['id']}"):
+        if st.button(":x: Delete", key=f"del_{lo['id']}"):
             # Clean up widget state keys for this LO so new LOs seed cleanly
             ss.pop(lo_text_key, None)
             ss.pop(lo_level_key, None)
             ss["los"].remove(lo)
             st.rerun()
 
+# Add-new button at the bottom of the LO section
+#st.divider()
+if st.button("➕ Add Learning Objective", key="add_lo_bottom"):
+    ss["los"].append({
+        "id": str(uuid.uuid4()),
+        "text": "",
+        "intended_level": "Remember",
+        "alignment": None,
+        "final_text": None,
+        "alignment_sig": None,
+        "generation_sig": None
+    })
+    st.rerun()
+#################################################
 # 3 Alignment
-st.header("3) Alignment Check")
+#################################################
+st.header("🧭 Alignment Check")
 # Helper to check if we can run alignment
 def can_run_alignment(ss) -> bool:
     return bool(ss["module_text"] and ss["los"] and all(lo.get("text") for lo in ss["los"]))
@@ -230,9 +261,10 @@ for i, lo in enumerate(list(ss["los"])):
                 lo["generation_sig"] = None
                 st.info("Cleared questions for this LO due to final text change.")   
 
-
+#################################################
 # 4 Generate
-st.header("4) Generate Questions")
+#################################################
+st.header("✍️ Generate Questions")
 # Helper to check if we can run generation
 def can_generate(ss) -> bool:
     return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
@@ -271,8 +303,10 @@ for lo in ss["los"]:
             q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""), key=f"ref_{lo['id']}_{idx}")
             q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
 
+################################################
 # 5 Export
-st.header("5) Export to Word")
+################################################
+st.header("📄 Export to Word")
 if st.button("Build DOCX file", disabled=not ss["questions"]):
     doc=build_docx(ss["los"], ss["questions"])
     st.download_button("Download", data=doc, file_name="assessment_questions.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")

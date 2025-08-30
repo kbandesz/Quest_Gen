@@ -14,6 +14,7 @@ MOCK_MODE = True
 OPENAI_MODEL = "gpt-4.1-nano"
 client = None  # type: ignore
 
+# To override mock flag and model at runtime.
 def set_runtime_config(mock_mode: bool, model: str) -> None:
     """Allow the app to override mock flag and model at runtime."""
     global MOCK_MODE, OPENAI_MODEL, client
@@ -25,9 +26,7 @@ def set_runtime_config(mock_mode: bool, model: str) -> None:
         # entering mock mode: drop the client reference
         client = None
 
-# ─────────────────────────────────────────────────────────────────────────
 # Mock alignment scenarios (used only when MOCK_MODE is enabled)
-#
 _MOCK_ALIGNMENT_SCENARIOS = [
     # 1) Consistent — no rewrite needed
     lambda lo_text, intended_level: {
