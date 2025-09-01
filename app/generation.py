@@ -64,17 +64,20 @@ def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
         return {"mock":"on"}
     if client is None:
         set_runtime_config(MOCK_MODE, OPENAI_MODEL)
-    resp = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role":"system","content":SYSTEM_PROMPT},
-            {"role":"user","content":prompt},
-        ],
-        temperature=temperature,
-        response_format={"type":"json_object"},
-        max_completion_tokens=max_tokens,
-    )
-    return parse_json_strict(resp.choices[0].message.content)
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role":"system","content":SYSTEM_PROMPT},
+                {"role":"user","content":prompt},
+            ],
+            temperature=temperature,
+            response_format={"type":"json_object"},
+            max_completion_tokens=max_tokens,
+        )
+        return parse_json_strict(resp.choices[0].message.content)
+    except Exception as e:
+        raise Exception(f"API call failed: {e}")
 
 def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:
     if MOCK_MODE:

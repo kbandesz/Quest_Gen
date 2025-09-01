@@ -43,7 +43,7 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
 # App setup
 ################################################
 st.set_page_config(page_title="Bloom Alignment & Question Generator", page_icon="🧠", layout="wide")
-st.title(":mortar_board: Bloom Alignment Analyzer & Question Generator")
+st.title(":mortar_board: Learning Objective and Question Generator")
 
 # Initialize session state
 ss = st.session_state
@@ -108,7 +108,11 @@ files=st.file_uploader(
 
 # Extract text + token count (from cache if available)
 file_keys = [(f.name, f.size, getattr(f, "last_modified", None)) for f in files]
-text, tokens = _extract_cached_text_and_tokens(tuple(file_keys), files)
+try:
+    text, tokens = _extract_cached_text_and_tokens(tuple(file_keys), files)
+except Exception as e:
+    st.error(e)
+    text, tokens = "", 0
 
 if tokens>MODULE_TOKEN_LIMIT:
     st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Remove content to proceed.")
@@ -149,7 +153,7 @@ st. markdown(LO_WRITING_TIPS)
 # Visual reference (expandable pyramid)
 with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
     st.image(BLOOM_PYRAMID_IMAGE,
-             use_column_width="auto")
+             use_container_width=True)
 
 # List of LOs (editable)
 for i, lo in enumerate(list(ss["los"])):

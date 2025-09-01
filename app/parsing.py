@@ -33,14 +33,17 @@ def _normalize(text: str) -> str:
 
 # Extract text from a single file
 def _extract_single(uploaded_file) -> str:
-    name = uploaded_file.name.lower()
-    if name.endswith(".pdf"):
-        return _normalize(_read_pdf(uploaded_file))
-    if name.endswith(".docx"):
-        return _normalize(_read_docx(uploaded_file))
-    if name.endswith(".txt"):
-        return _normalize(_read_txt(uploaded_file))
-    raise ValueError("Unsupported file type")
+    try:
+        name = uploaded_file.name.lower()
+        if name.endswith(".pdf"):
+            return _normalize(_read_pdf(uploaded_file))
+        if name.endswith(".docx"):
+            return _normalize(_read_docx(uploaded_file))
+        if name.endswith(".txt"):
+            return _normalize(_read_txt(uploaded_file))
+        raise ValueError("Unsupported file type")
+    except Exception as e:
+        raise ValueError(f"Failed to parse the file: {uploaded_file.name}. Please check the file type and ensure it is not password-protected or corrupted.")
 
 def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, int]:
     """
