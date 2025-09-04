@@ -1,6 +1,7 @@
 streamlit
 pypdf
 mammoth
+python-pptx
 python-docx
 python-dotenv
 tiktoken

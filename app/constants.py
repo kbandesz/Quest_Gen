@@ -29,7 +29,7 @@ LO_WRITING_TIPS = """
 - Make sure there is **one measurable verb** in each objective; avoid vague verbs like *know*, *understand*, *learn*, *appreciate*.
 - Keep objectives **clear and concise**.
 - Ensure objectives are **aligned with course content**.
-- Use the **Bloom's Taxonomy** framework to identify the cognitive skills learners need to demonstrat.
+- Use the **Bloom's Taxonomy** framework to identify the cognitive skills learners need to demonstrate.
 """
 # Assets
 BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"

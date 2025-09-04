@@ -1,10 +1,10 @@
-
+# Generate AI responses (including mocks)
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
 import random
-from .prompts import SYSTEM_PROMPT, build_alignment_prompt, build_generation_prompt
+from .prompts import ALIGN_SYSTEM_PROMPT, QUESTGEN_SYSTEM_PROMPT, build_align_user_prompt, build_questgen_user_prompt
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
 
 # Load OPENAI_API_KEY from .env
@@ -59,7 +59,7 @@ def _mock_alignment_choice(lo_text: str, intended_level: str) -> Dict[str, Any]:
     scenario_fn = random.choice(_MOCK_ALIGNMENT_SCENARIOS)
     return scenario_fn(lo_text, intended_level)
 
-def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
+def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
     if MOCK_MODE:
         return {"mock":"on"}
     if client is None:
@@ -68,8 +68,8 @@ def _chat_json(prompt:str, max_tokens:int, temperature:float)->Dict[str,Any]:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
-                {"role":"system","content":SYSTEM_PROMPT},
-                {"role":"user","content":prompt},
+                {"role":"system","content":system},
+                {"role":"user","content":user},
             ],
             temperature=temperature,
             response_format={"type":"json_object"},
@@ -83,8 +83,8 @@ def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,
     if MOCK_MODE:
         # Return a randomized mock scenario to exercise UI branches
         return _mock_alignment_choice(lo_text, intended_level)
-    prompt=build_alignment_prompt(intended_level, lo_text, module_text)
-    obj=_chat_json(prompt, max_tokens=800, temperature=0.2)
+    user_prompt=build_align_user_prompt(intended_level, lo_text, module_text)
+    obj=_chat_json(ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=800, temperature=0.2)
     return validate_alignment_payload(obj)
 
 def _mock_questions(n:int=2)->Dict[str,Any]:
@@ -106,9 +106,8 @@ def _mock_questions(n:int=2)->Dict[str,Any]:
     return {"questions":qs}
 
 def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
-    n=min(2,int(n_questions))
     if MOCK_MODE:
-        return _mock_questions(n)
-    prompt=build_generation_prompt(bloom_level, final_lo_text, module_text, n)
-    obj=_chat_json(prompt, max_tokens=1800, temperature=0.4)
+        return _mock_questions(n_questions)
+    user_prompt=build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
+    obj=_chat_json(QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
     return validate_questions_payload(obj)

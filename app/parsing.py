@@ -1,8 +1,9 @@
-
 import io, math, re
 from typing import Tuple, List, Union
 from pypdf import PdfReader
 import mammoth  # for docx to text
+from pptx import Presentation  # for pptx to text (python-pptx)
+
 
 # PDF
 def _read_pdf(f) -> str:
@@ -25,6 +26,40 @@ def _read_docx(f) -> str:
 def _read_txt(f)->str:
     return f.read().decode("utf-8", errors="ignore") if hasattr(f,"read") else f.decode("utf-8", errors="ignore")
 
+# PPTX
+def _read_pptx(f) -> str:
+    """
+    Extract text from all slides (shapes with text frames) and speaker notes.
+    """
+    b = f.read() if hasattr(f, "read") else f
+    prs = Presentation(io.BytesIO(b))
+    chunks = []
+
+    for idx, slide in enumerate(prs.slides, start=1):
+        slide_bits = []
+
+        # Slide body text
+        for shape in slide.shapes:
+            if hasattr(shape, "has_text_frame") and shape.has_text_frame:
+                # join all paragraphs/runs into a single string per shape
+                text = "\n".join(p.text for p in shape.text_frame.paragraphs if p.text)
+                if text:
+                    slide_bits.append(text)
+
+        # Speaker notes (if any)
+        if slide.has_notes_slide and slide.notes_slide and slide.notes_slide.notes_text_frame:
+            notes_text = "\n".join(
+                p.text for p in slide.notes_slide.notes_text_frame.paragraphs if p.text
+            )
+            if notes_text:
+                slide_bits.append(f"[Notes]\n{notes_text}")
+
+        if slide_bits:
+            chunks.append(f"[Slide {idx}]\n" + "\n".join(slide_bits))
+
+    return "\n\n".join(chunks)
+
+
 # Consistent newline char, reduce multiple whitespace chars, remove trailing spaces
 def _normalize(text: str) -> str:
     text = re.sub(r"\r\n?", "\n", text)
@@ -39,6 +74,8 @@ def _extract_single(uploaded_file) -> str:
             return _normalize(_read_pdf(uploaded_file))
         if name.endswith(".docx"):
             return _normalize(_read_docx(uploaded_file))
+        if name.endswith(".pptx"):
+            return _normalize(_read_pptx(uploaded_file))
         if name.endswith(".txt"):
             return _normalize(_read_txt(uploaded_file))
         raise ValueError("Unsupported file type")
@@ -47,7 +84,7 @@ def _extract_single(uploaded_file) -> str:
 
 def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, int]:
     """
-    Accepts a single uploaded file or a list of up to 3 files.
+    Accepts a single uploaded file or a list of files.
     Returns a single combined text and a token estimate.
     """
     if not uploaded_files:
