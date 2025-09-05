@@ -70,6 +70,7 @@ st.title(":mortar_board: Learning Objective and Question Generator")
 # Initialize session state
 ss = st.session_state
 ss.setdefault("current_step", 1)
+ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
 ss.setdefault("uploaded_files", [])
 ss.setdefault("processed_file_keys", None)
 ss.setdefault("module_text", "")
@@ -81,6 +82,7 @@ ss.setdefault("questions_sig", None)
 ss.setdefault("docx_file", None)
 
 ss.setdefault("MOCK_MODE", True)
+ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
 ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 
 # Apply runtime config to generation module on each rerun (current values)
@@ -100,6 +102,7 @@ with st.sidebar:
 
     # Change handler: apply model/mock and invalidate downstream state
     def _on_settings_change():
+        prev_mock = ss.get("__prev_mock_mode__", ss["MOCK_MODE"])
         # 1) apply to generation runtime
         set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
         # 2) invalidate alignment/finals/questions/suggestions
@@ -111,6 +114,16 @@ with st.sidebar:
             ss.pop(f"sug_{lo['id']}", None)
         ss["questions"].clear()
         ss["docx_file"] = None
+        # If mock mode was toggled, reset uploaded content and uploader widget
+        if prev_mock != ss["MOCK_MODE"]:
+            ss["uploaded_files"] = []
+            ss["processed_file_keys"] = None
+            ss["module_text"] = ""
+            ss["module_tokens"] = 0
+            ss["module_sig"] = ""
+            ss.pop("module_files", None)
+            ss["uploader_key"] += 1
+        ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
         # Flag for optional notice after rerun
         ss["__settings_changed__"] = True
 
@@ -154,7 +167,7 @@ def render_step_1():
         "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
-        key="module_files",
+        key=f"file_uploader_{ss["uploader_key"]}",
         disabled=ss["MOCK_MODE"]
         ) or []
     # In mock mode, override with the mock file
