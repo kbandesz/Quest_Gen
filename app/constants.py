@@ -33,3 +33,28 @@ LO_WRITING_TIPS = """
 """
 # Assets
 BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
+
+# MOCK MODE: Use mock data and avoid real API calls (for local testing)
+import io
+import unittest.mock as mock
+from datetime import datetime
+
+# 1. Create a MagicMock object
+mock_uploaded_file = mock.MagicMock()
+
+# 2. Add content to a BytesIO object (as Streamlit does)
+with open('assets/mock_module.txt', 'r', encoding='utf-8') as f:
+    mock_content = f.read()
+file_data = io.BytesIO(mock_content.encode('utf-8'))
+
+# 3. Configure the mock with the required attributes and methods
+mock_uploaded_file.configure_mock(
+    # Set the file attributes
+    name="mock_module.txt",
+    size=len(mock_content.encode('utf-8')),
+    last_modified=datetime.now(),
+    
+    # Set the behavior of the file methods
+    read=mock.MagicMock(return_value=file_data.read()),
+    seek=mock.MagicMock() # Many file functions call `seek(0)`
+)

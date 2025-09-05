@@ -1,4 +1,5 @@
-import streamlit as st, os, uuid
+import streamlit as st
+import io, os, uuid
 from typing import List, Dict
 from dotenv import load_dotenv
 import hashlib
@@ -13,6 +14,7 @@ from app.constants import (
     BLOOM_DEFS,
     BLOOM_VERBS,
     BLOOM_PYRAMID_IMAGE,
+    mock_uploaded_file
 )
 
 # Load environment variables (OpenAI API key) from .env
@@ -86,7 +88,7 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Banner based on current mock setting
 if ss["MOCK_MODE"]:
-    st.warning(f"⚠️ MOCK MODE is ON — model '{ss['OPENAI_MODEL']}' is not called.")
+    st.warning(f"⚠️ MOCK MODE is ON — course material and AI responses are canned.")
 st.text("")
 ################################################
 # Sidebar for settings
@@ -108,9 +110,9 @@ with st.sidebar:
             lo.pop("generation_sig", None)
             ss.pop(f"sug_{lo['id']}", None)
         ss["questions"].clear()
+        ss["docx_file"] = None
         # Flag for optional notice after rerun
         ss["__settings_changed__"] = True
-
 
     st.markdown("### Runtime Settings")
 
@@ -137,26 +139,31 @@ def render_stepper():
                 st.markdown(f"✅ {i+1}. {step_name}")
             else:
                 st.markdown(f"_{i+1}. {step_name}_")
-    st.divider()
+    "-----------------------------------------------------"
 
 ################################################
 # 1 Upload Course Content
 ################################################
 def render_step_1():
-    st.header("📂 Upload Course Material")
-    st.markdown("""**Tip:** You can upload any content that you will use to develop the course.
+    help_upload = """**Tip:** You can upload any content that you will use to develop the course.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the course content.""")
-    
+                presentations, or any other documents that you plan to use for writing the course content."""
+    st.header("📂 Upload Course Material", help=help_upload)
+
     files=st.file_uploader(
         "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
         key="module_files",
+        disabled=ss["MOCK_MODE"]
         ) or []
+    # In mock mode, override with the mock file
+    if ss["MOCK_MODE"]:
+        files = [mock_uploaded_file]
 
     # Compute a stable signature for the current files (for cache keying)
     current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
+
 
     # Process files if they have actually changed.
     if files and current_file_keys != ss["processed_file_keys"]:
@@ -200,9 +207,9 @@ def render_step_1():
     st.caption(f"Estimated tokens: {ss.get("module_tokens", 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
         st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
-
+    "-----------------------------------------------------"
+    
     # --- Navigation ---
-    st.divider()
     is_ready_for_step_2 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= MODULE_TOKEN_LIMIT
     if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_2):
         ss["current_step"] = 2
