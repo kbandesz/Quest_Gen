@@ -1,6 +1,6 @@
 import streamlit as st
 import io, os, uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import hashlib
 
@@ -92,6 +92,46 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 if ss["MOCK_MODE"]:
     st.warning(f"⚠️ MOCK MODE is ON — course material and AI responses are canned.")
 st.text("")
+
+
+# --------------------------------------------------------------
+# Helpers for clearing derived state
+# --------------------------------------------------------------
+def clear_alignment(lo: Dict) -> None:
+    """Remove alignment-related fields for a learning objective."""
+    lo.pop("alignment", None)
+    lo.pop("final_text", None)
+    lo.pop("alignment_sig", None)
+    lo.pop("generation_sig", None)
+    ss.pop(f"sug_{lo['id']}", None)
+
+
+def clear_questions(lo_id: Optional[str] = None) -> None:
+    """Clear generated questions and dependent artifacts."""
+    if lo_id:
+        ss["questions"].pop(lo_id, None)
+    else:
+        ss["questions"].clear()
+    ss.pop("docx_file", None)
+    ss.pop("questions_sig", None)
+
+
+def invalidate_module_outputs() -> None:
+    """Clear all outputs that depend on uploaded module content."""
+    for lo in ss.get("los", []):
+        clear_alignment(lo)
+    clear_questions()
+
+
+def reset_uploaded_content() -> None:
+    """Remove uploaded module data and reset uploader widget."""
+    ss["uploaded_files"] = []
+    ss["processed_file_keys"] = None
+    ss["module_text"] = ""
+    ss["module_tokens"] = 0
+    ss["module_sig"] = ""
+    ss.pop("module_files", None)
+    ss["uploader_key"] += 1
 ################################################
 # Sidebar for settings
 ################################################
@@ -105,24 +145,11 @@ with st.sidebar:
         prev_mock = ss.get("__prev_mock_mode__", ss["MOCK_MODE"])
         # 1) apply to generation runtime
         set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
-        # 2) invalidate alignment/finals/questions/suggestions
-        for lo in ss.get("los", []):
-            lo.pop("alignment", None)
-            lo.pop("final_text", None)
-            lo.pop("alignment_sig", None)
-            lo.pop("generation_sig", None)
-            ss.pop(f"sug_{lo['id']}", None)
-        ss["questions"].clear()
-        ss["docx_file"] = None
-        # If mock mode was toggled, reset uploaded content and uploader widget
+        # 2) invalidate downstream state
+        invalidate_module_outputs()
+        # If mock mode was toggled, also reset uploaded content
         if prev_mock != ss["MOCK_MODE"]:
-            ss["uploaded_files"] = []
-            ss["processed_file_keys"] = None
-            ss["module_text"] = ""
-            ss["module_tokens"] = 0
-            ss["module_sig"] = ""
-            ss.pop("module_files", None)
-            ss["uploader_key"] += 1
+            reset_uploaded_content()
         ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
         # Flag for optional notice after rerun
         ss["__settings_changed__"] = True
@@ -200,13 +227,7 @@ def render_step_1():
         else:
             # Invalidate only if the *actual parsed text* changed
             if prev_mod_sig and prev_mod_sig != new_mod_sig:
-                for lo in ss.get("los", []):
-                    lo.pop("alignment", None)
-                    lo.pop("final_text", None)
-                    ss.pop(f"sug_{lo['id']}", None)
-                ss["questions"].clear()
-                ss["docx_file"] = None  # clear any generated docx
-                ss.pop("questions_sig", None)
+                invalidate_module_outputs()
                 if ss.get("los"):
                     st.info("Module content changed — alignment and questions cleared.")
 
@@ -271,14 +292,9 @@ def render_step_2():
             current_align_sig = _sig_alignment(lo["text"], lo["intended_level"], module_sig)
             prev_align_sig = lo.get("alignment_sig")     
             if prev_align_sig and prev_align_sig != current_align_sig:
-                lo.pop("alignment", None)
-                lo.pop("final_text", None)
-                lo.pop("generation_sig", None)
-                ss["questions"].pop(lo["id"], None)
-                lo["alignment_sig"] = None
-                ss.pop(f"sug_{lo['id']}", None)
-
-                st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")        
+                clear_alignment(lo)
+                clear_questions(lo["id"])
+                st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")
 
 
             if st.button(":x: Delete", key=f"del_{lo['id']}"):
@@ -346,10 +362,8 @@ def render_step_2():
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
                     ss.pop(f"sug_{lo['id']}", None)
-                    ss["questions"].pop(lo["id"], None)
+                    clear_questions(lo["id"])
                     lo["generation_sig"] = None
-                    ss.pop("docx_file", None)
-                    ss.pop("questions_sig", None)
                     st.info("Cleared questions for this LO due to final text change.")
     
     # --- Navigation ---
