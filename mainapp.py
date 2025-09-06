@@ -116,10 +116,9 @@ def clear_questions(lo_id: Optional[str] = None) -> None:
     ss.pop("questions_sig", None)
 
 
-def invalidate_module_outputs() -> None:
+def clear_module_dependent_outputs() -> None:
     """Clear all outputs that depend on uploaded module content."""
-    for lo in ss.get("los", []):
-        clear_alignment(lo)
+    ss["los"].clear()
     clear_questions()
 
 
@@ -130,13 +129,13 @@ def reset_uploaded_content() -> None:
     ss["module_text"] = ""
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
-    ss.pop("module_files", None)
     ss["uploader_key"] += 1
 ################################################
 # Sidebar for settings
 ################################################
 with st.sidebar:
     if st.button("Reset session"):
+        ss["uploader_key"] += 1
         ss.clear()
         st.rerun()
 
@@ -146,13 +145,22 @@ with st.sidebar:
         # 1) apply to generation runtime
         set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
         # 2) invalidate downstream state
-        invalidate_module_outputs()
-        # If mock mode was toggled, also reset uploaded content
+
+        # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
+            clear_module_dependent_outputs()
             reset_uploaded_content()
+            ss["current_step"] = 1
+            st.toast("Mock mode changed — cleared all uploaded content, LOs, and LLM output.")
+        # If AI model changed, just clear LLM outputs
+        else:
+            for lo in ss.get("los", []):
+                clear_alignment(lo)
+            clear_questions()
+            st.toast("Model changed — cleared all LLM output.")
         ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
         # Flag for optional notice after rerun
-        ss["__settings_changed__"] = True
+        #ss["__settings_changed__"] = True
 
     st.markdown("### Runtime Settings")
 
@@ -161,8 +169,8 @@ with st.sidebar:
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL", on_change=_on_settings_change)
 
     # Show confirmation if settings were just changed
-    if ss.pop("__settings_changed__", False):
-        st.toast("Settings changed — cleared any Bloom alignment and questions.")
+    # if ss.pop("__settings_changed__", False):
+    #     st.warning("Settings changed — cleared any Bloom alignment and questions.")
 
 
 ################################################
@@ -207,6 +215,9 @@ def render_step_1():
 
     # Process files if they have actually changed.
     if files and current_file_keys != ss["processed_file_keys"]:
+        if ss["processed_file_keys"] is not None:
+            st.toast("Module content changed — LOs and questions cleared.")
+        clear_module_dependent_outputs()
         ss["processed_file_keys"] = current_file_keys
         ss["uploaded_files"] = files
         try:
@@ -226,10 +237,10 @@ def render_step_1():
             st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
         else:
             # Invalidate only if the *actual parsed text* changed
-            if prev_mod_sig and prev_mod_sig != new_mod_sig:
-                invalidate_module_outputs()
+            #if prev_mod_sig and prev_mod_sig != new_mod_sig:
+               # invalidate_module_outputs()
                 if ss.get("los"):
-                    st.info("Module content changed — alignment and questions cleared.")
+                    st.info("Module content changed — LOs and questions cleared.")
 
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["uploaded_files"]:
