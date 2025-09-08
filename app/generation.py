@@ -6,6 +6,7 @@ from typing import Dict, Any
 import random
 from .prompts import ALIGN_SYSTEM_PROMPT, QUESTGEN_SYSTEM_PROMPT, build_align_user_prompt, build_questgen_user_prompt
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
+from . import constants as const
 
 # Load OPENAI_API_KEY from .env
 load_dotenv() 
@@ -26,37 +27,10 @@ def set_runtime_config(mock_mode: bool, model: str) -> None:
         # entering mock mode: drop the client reference
         client = None
 
-# Mock alignment scenarios (used only when MOCK_MODE is enabled)
-_MOCK_ALIGNMENT_SCENARIOS = [
-    # 1) Consistent — no rewrite needed
-    lambda lo_text, intended_level: {
-        "label": "consistent",
-        "reasons": [f"Primary verb and cognitive demand match '{intended_level}'.", "LO is measurable and specific."],
-        "suggested_lo": None,
-    },
-    # 2) Ambiguous — suggest sharper rewrite
-    lambda lo_text, intended_level: {
-        "label": "ambiguous",
-        "reasons": ["LO mixes multiple actions or vague phrasing (e.g., 'understand', 'know')."],
-        "suggested_lo": f"Revise to a single measurable verb at {intended_level}: Replace vague phrasing in \"{lo_text}\" with a concrete outcome (e.g., 'analyze X by comparing Y and Z using criteria A').",
-    },
-    # 3) Inconsistent — suggest rewrite aligned to intended level
-    lambda lo_text, intended_level: {
-        "label": "inconsistent",
-        "reasons": [f"Stated verb implies a different Bloom level than '{intended_level}'.", "Assessment would not evidence the intended level."],
-        "suggested_lo": f"Rewrite for {intended_level}: Start with a strong {intended_level.lower()}-level verb and specify observable criteria relevant to the module.",
-    },
-    # 4) Ambiguous due to content coverage — needs context-constrained rewrite
-    lambda lo_text, intended_level: {
-        "label": "ambiguous",
-        "reasons": ["Module content only partially covers the constructs referenced in the LO."],
-        "suggested_lo": f"Constrain scope to topics covered in the module and keep the {intended_level.lower()} cognitive demand.",
-    },
-]
 
 def _mock_alignment_choice(lo_text: str, intended_level: str) -> Dict[str, Any]:
     """Pick one mock alignment outcome at random."""
-    scenario_fn = random.choice(_MOCK_ALIGNMENT_SCENARIOS)
+    scenario_fn = random.choice(const.MOCK_ALIGNMENT_SCENARIOS)
     return scenario_fn(lo_text, intended_level)
 
 def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:

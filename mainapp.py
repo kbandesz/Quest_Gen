@@ -7,15 +7,7 @@ import hashlib
 from app.parsing import extract_text_and_tokens
 from app.generation import check_alignment, generate_questions, set_runtime_config
 from app.export import build_docx
-from app.constants import (
-    MODULE_TOKEN_LIMIT,
-    LO_WRITING_TIPS,
-    BLOOM_LEVELS,
-    BLOOM_DEFS,
-    BLOOM_VERBS,
-    BLOOM_PYRAMID_IMAGE,
-    mock_uploaded_file
-)
+import app.constants as const
 
 # Load environment variables (OpenAI API key) from .env
 load_dotenv()
@@ -207,7 +199,7 @@ def render_step_1():
         ) or []
     # In mock mode, override with the mock file
     if ss["MOCK_MODE"]:
-        files = [mock_uploaded_file]
+        files = [const.load_mock_file()]
 
     # Compute a stable signature for the current files (for cache keying)
     current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
@@ -233,8 +225,8 @@ def render_step_1():
         new_mod_sig = _sig_module(text)
         ss["module_sig"] = new_mod_sig
 
-        if tokens > MODULE_TOKEN_LIMIT:
-            st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+        if tokens > const.MODULE_TOKEN_LIMIT:
+            st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
         else:
             # Invalidate only if the *actual parsed text* changed
             #if prev_mod_sig and prev_mod_sig != new_mod_sig:
@@ -255,7 +247,7 @@ def render_step_1():
     "-----------------------------------------------------"
     
     # --- Navigation ---
-    is_ready_for_step_2 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= MODULE_TOKEN_LIMIT
+    is_ready_for_step_2 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_2):
         ss["current_step"] = 2
         st.rerun()
@@ -268,11 +260,11 @@ def render_step_2():
 
     # 2.a Define LOs
     # General LO writing advice
-    st.markdown(LO_WRITING_TIPS)
+    st.markdown(const.LO_WRITING_TIPS)
 
     # Visual reference (expandable pyramid)
     with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
-        st.image(BLOOM_PYRAMID_IMAGE,
+        st.image(const.BLOOM_PYRAMID_IMAGE,
                 use_container_width=True)
 
     # List of LOs (editable)
@@ -292,11 +284,11 @@ def render_step_2():
             lo_level_key = f"lo_level_{lo['id']}"
             if lo_level_key not in ss:
                 ss[lo_level_key] = prev_level
-            st.selectbox("Intended Bloom level", BLOOM_LEVELS, key=lo_level_key)
+            st.selectbox("Intended Bloom level", const.BLOOM_LEVELS, key=lo_level_key)
             lo["intended_level"] = ss[lo_level_key]
             # Inline guidance under picker
-            st.caption(f"##### ℹ️ {BLOOM_DEFS[lo['intended_level']]}")
-            st.caption(f"**Common verbs:** {BLOOM_VERBS[lo['intended_level']]}")
+            st.caption(f"##### ℹ️ {const.BLOOM_DEFS[lo['intended_level']]}")
+            st.caption(f"**Common verbs:** {const.BLOOM_VERBS[lo['intended_level']]}")
 
             # ---- Per-LO invalidation when LO text or intended level changes ────
             module_sig = ss.get("module_sig","")
@@ -313,6 +305,7 @@ def render_step_2():
                 ss.pop(lo_text_key, None)
                 ss.pop(lo_level_key, None)
                 ss["los"].remove(lo)
+                clear_questions(lo["id"])
                 st.rerun()
 
     # Add-new button at the bottom of the LO section
@@ -341,6 +334,10 @@ def render_step_2():
             lo["alignment_sig"] = _sig_alignment(
                 lo["text"], lo["intended_level"], ss.get("module_sig","")
             )
+            # Update suggested LO in session state for editing in text area
+            sug_key = f"sug_{lo['id']}"
+            if sug_key in ss:
+                ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
 
     for i, lo in enumerate(list(ss["los"])):
         if not lo.get("alignment"): continue
@@ -354,13 +351,14 @@ def render_step_2():
 
             # ---- Suggested rewrite: seed once, then bind to key (editable)
             sug_key = f"sug_{lo['id']}"
+            # First time seeding or if user has already accepted a final text before
             if sug_key not in ss:
-                ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
+                ss[sug_key] = lo.get("final_text") or lo["alignment"].get("suggested_lo") or lo["text"  ]
             final = st.text_area("Suggested rewrite (editable)", key=sug_key)
             st.caption("Edits here are not saved until you click **Accept as final**.")
         
             
-            if st.button("Accept as final", key=f"accept_{lo['id']}"):
+            if st.button("Accept as final", key=f"accept_{lo['id']}"): #disabled=not final.strip()
                 lo["final_text"] = final
                 st.success("Accepted. Final LO updated.")
 
@@ -372,7 +370,7 @@ def render_step_2():
                     )
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    ss.pop(f"sug_{lo['id']}", None)
+                    #ss.pop(f"sug_{lo['id']}", None)
                     clear_questions(lo["id"])
                     lo["generation_sig"] = None
                     st.info("Cleared questions for this LO due to final text change.")
@@ -473,10 +471,6 @@ def render_step_3():
 # 4 Export
 ################################################
 def render_step_4():
-    # st.header("📄 Export to Word")
-    # if st.button("Build DOCX file", disabled=not ss["questions"]):
-    #     doc=build_docx(ss["los"], ss["questions"])
-    #     st.download_button("Download", data=doc, file_name="assessment_questions.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     st.header("📄 Export to Word")
     build_disabled = not ss.get("questions")

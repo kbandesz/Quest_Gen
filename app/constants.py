@@ -35,26 +35,57 @@ LO_WRITING_TIPS = """
 BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
 
 # MOCK MODE: Use mock data and avoid real API calls (for local testing)
-import io
-import unittest.mock as mock
-from datetime import datetime
+def load_mock_file():
+    """Load the mock module text file used in MOCK_MODE."""
+    import io
+    import unittest.mock as mock
+    from datetime import datetime
 
-# 1. Create a MagicMock object
-mock_uploaded_file = mock.MagicMock()
+    # 1. Create a MagicMock object
+    mock_uploaded_file = mock.MagicMock()
 
-# 2. Add content to a BytesIO object (as Streamlit does)
-with open('assets/mock_module.txt', 'r', encoding='utf-8') as f:
-    mock_content = f.read()
-file_data = io.BytesIO(mock_content.encode('utf-8'))
+    # 2. Add content to a BytesIO object (as Streamlit does)
+    with open('assets/mock_module.txt', 'r', encoding='utf-8') as f:
+        mock_content = f.read()
+    file_data = io.BytesIO(mock_content.encode('utf-8'))
 
-# 3. Configure the mock with the required attributes and methods
-mock_uploaded_file.configure_mock(
-    # Set the file attributes
-    name="mock_module.txt",
-    size=len(mock_content.encode('utf-8')),
-    last_modified=datetime.now(),
-    
-    # Set the behavior of the file methods
-    read=mock.MagicMock(return_value=file_data.read()),
-    seek=mock.MagicMock() # Many file functions call `seek(0)`
-)
+    # 3. Configure the mock with the required attributes and methods
+    mock_uploaded_file.configure_mock(
+        # Set the file attributes
+        name="mock_module.txt",
+        size=len(mock_content.encode('utf-8')),
+        last_modified=datetime.now(),
+        
+        # Set the behavior of the file methods
+        read=mock.MagicMock(return_value=file_data.read()),
+        seek=mock.MagicMock() # Many file functions call `seek(0)`
+    )
+    return mock_uploaded_file
+
+# Mock alignment scenarios (used only when MOCK_MODE is enabled)
+MOCK_ALIGNMENT_SCENARIOS = [
+    # 1) Consistent — no rewrite needed
+    lambda lo_text, intended_level: {
+        "label": "consistent",
+        "reasons": [f"Primary verb and cognitive demand match '{intended_level}'.", "LO is measurable and specific."],
+        "suggested_lo": None,
+    },
+    # 2) Ambiguous — suggest sharper rewrite
+    lambda lo_text, intended_level: {
+        "label": "ambiguous",
+        "reasons": ["LO mixes multiple actions or vague phrasing (e.g., 'understand', 'know')."],
+        "suggested_lo": f"Revise to a single measurable verb at {intended_level}: Replace vague phrasing in \"{lo_text}\" with a concrete outcome (e.g., 'analyze X by comparing Y and Z using criteria A').",
+    },
+    # 3) Inconsistent — suggest rewrite aligned to intended level
+    lambda lo_text, intended_level: {
+        "label": "inconsistent",
+        "reasons": [f"Stated verb implies a different Bloom level than '{intended_level}'.", "Assessment would not evidence the intended level."],
+        "suggested_lo": f"Rewrite for {intended_level}: Start with a strong {intended_level.lower()}-level verb and specify observable criteria relevant to the module.",
+    },
+    # 4) Ambiguous due to content coverage — needs context-constrained rewrite
+    lambda lo_text, intended_level: {
+        "label": "ambiguous",
+        "reasons": ["Module content only partially covers the constructs referenced in the LO."],
+        "suggested_lo": f"Constrain scope to topics covered in the module and keep the {intended_level.lower()} cognitive demand.",
+    },
+]
