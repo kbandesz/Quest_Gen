@@ -1,21 +1,13 @@
 import streamlit as st
 import io, os, uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import hashlib
 
 from app.parsing import extract_text_and_tokens
 from app.generation import check_alignment, generate_questions, set_runtime_config
 from app.export import build_docx
-from app.constants import (
-    MODULE_TOKEN_LIMIT,
-    LO_WRITING_TIPS,
-    BLOOM_LEVELS,
-    BLOOM_DEFS,
-    BLOOM_VERBS,
-    BLOOM_PYRAMID_IMAGE,
-    mock_uploaded_file
-)
+import app.constants as const
 
 # Load environment variables (OpenAI API key) from .env
 load_dotenv()
@@ -92,11 +84,50 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 if ss["MOCK_MODE"]:
     st.warning(f"⚠️ MOCK MODE is ON — course material and AI responses are canned.")
 st.text("")
+
+
+# --------------------------------------------------------------
+# Helpers for clearing derived state
+# --------------------------------------------------------------
+def clear_alignment(lo: Dict) -> None:
+    """Remove alignment-related fields for a learning objective."""
+    lo.pop("alignment", None)
+    lo.pop("final_text", None)
+    lo.pop("alignment_sig", None)
+    lo.pop("generation_sig", None)
+    ss.pop(f"sug_{lo['id']}", None)
+
+
+def clear_questions(lo_id: Optional[str] = None) -> None:
+    """Clear generated questions and dependent artifacts."""
+    if lo_id:
+        ss["questions"].pop(lo_id, None)
+    else:
+        ss["questions"].clear()
+    ss.pop("docx_file", None)
+    ss.pop("questions_sig", None)
+
+
+def clear_module_dependent_outputs() -> None:
+    """Clear all outputs that depend on uploaded module content."""
+    ss["los"].clear()
+    clear_questions()
+
+
+def reset_uploaded_content() -> None:
+    """Remove uploaded module data and reset uploader widget."""
+    ss["uploaded_files"] = []
+    ss["processed_file_keys"] = None
+    ss["module_text"] = ""
+    ss["module_tokens"] = 0
+    ss["module_sig"] = ""
+    ss["uploader_key"] += 1
 ################################################
 # Sidebar for settings
 ################################################
 with st.sidebar:
     if st.button("Reset session"):
+        ss["uploader_key"] += 1
         ss.clear()
         st.rerun()
 
@@ -105,27 +136,23 @@ with st.sidebar:
         prev_mock = ss.get("__prev_mock_mode__", ss["MOCK_MODE"])
         # 1) apply to generation runtime
         set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
-        # 2) invalidate alignment/finals/questions/suggestions
-        for lo in ss.get("los", []):
-            lo.pop("alignment", None)
-            lo.pop("final_text", None)
-            lo.pop("alignment_sig", None)
-            lo.pop("generation_sig", None)
-            ss.pop(f"sug_{lo['id']}", None)
-        ss["questions"].clear()
-        ss["docx_file"] = None
-        # If mock mode was toggled, reset uploaded content and uploader widget
+        # 2) invalidate downstream state
+
+        # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
-            ss["uploaded_files"] = []
-            ss["processed_file_keys"] = None
-            ss["module_text"] = ""
-            ss["module_tokens"] = 0
-            ss["module_sig"] = ""
-            ss.pop("module_files", None)
-            ss["uploader_key"] += 1
+            clear_module_dependent_outputs()
+            reset_uploaded_content()
+            ss["current_step"] = 1
+            st.toast("Mock mode changed — cleared all uploaded content, LOs, and LLM output.")
+        # If AI model changed, just clear LLM outputs
+        else:
+            for lo in ss.get("los", []):
+                clear_alignment(lo)
+            clear_questions()
+            st.toast("Model changed — cleared all LLM output.")
         ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
         # Flag for optional notice after rerun
-        ss["__settings_changed__"] = True
+        #ss["__settings_changed__"] = True
 
     st.markdown("### Runtime Settings")
 
@@ -134,8 +161,8 @@ with st.sidebar:
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL", on_change=_on_settings_change)
 
     # Show confirmation if settings were just changed
-    if ss.pop("__settings_changed__", False):
-        st.toast("Settings changed — cleared any Bloom alignment and questions.")
+    # if ss.pop("__settings_changed__", False):
+    #     st.warning("Settings changed — cleared any Bloom alignment and questions.")
 
 
 ################################################
@@ -172,7 +199,7 @@ def render_step_1():
         ) or []
     # In mock mode, override with the mock file
     if ss["MOCK_MODE"]:
-        files = [mock_uploaded_file]
+        files = [const.load_mock_file()]
 
     # Compute a stable signature for the current files (for cache keying)
     current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
@@ -180,6 +207,9 @@ def render_step_1():
 
     # Process files if they have actually changed.
     if files and current_file_keys != ss["processed_file_keys"]:
+        if ss["processed_file_keys"] is not None:
+            st.toast("Module content changed — LOs and questions cleared.")
+        clear_module_dependent_outputs()
         ss["processed_file_keys"] = current_file_keys
         ss["uploaded_files"] = files
         try:
@@ -195,20 +225,14 @@ def render_step_1():
         new_mod_sig = _sig_module(text)
         ss["module_sig"] = new_mod_sig
 
-        if tokens > MODULE_TOKEN_LIMIT:
-            st.error(f"Module exceeds {MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+        if tokens > const.MODULE_TOKEN_LIMIT:
+            st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
         else:
             # Invalidate only if the *actual parsed text* changed
-            if prev_mod_sig and prev_mod_sig != new_mod_sig:
-                for lo in ss.get("los", []):
-                    lo.pop("alignment", None)
-                    lo.pop("final_text", None)
-                    ss.pop(f"sug_{lo['id']}", None)
-                ss["questions"].clear()
-                ss["docx_file"] = None  # clear any generated docx
-                ss.pop("questions_sig", None)
+            #if prev_mod_sig and prev_mod_sig != new_mod_sig:
+               # invalidate_module_outputs()
                 if ss.get("los"):
-                    st.info("Module content changed — alignment and questions cleared.")
+                    st.info("Module content changed — LOs and questions cleared.")
 
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["uploaded_files"]:
@@ -223,7 +247,7 @@ def render_step_1():
     "-----------------------------------------------------"
     
     # --- Navigation ---
-    is_ready_for_step_2 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= MODULE_TOKEN_LIMIT
+    is_ready_for_step_2 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_2):
         ss["current_step"] = 2
         st.rerun()
@@ -236,11 +260,11 @@ def render_step_2():
 
     # 2.a Define LOs
     # General LO writing advice
-    st.markdown(LO_WRITING_TIPS)
+    st.markdown(const.LO_WRITING_TIPS)
 
     # Visual reference (expandable pyramid)
     with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
-        st.image(BLOOM_PYRAMID_IMAGE,
+        st.image(const.BLOOM_PYRAMID_IMAGE,
                 use_container_width=True)
 
     # List of LOs (editable)
@@ -260,25 +284,20 @@ def render_step_2():
             lo_level_key = f"lo_level_{lo['id']}"
             if lo_level_key not in ss:
                 ss[lo_level_key] = prev_level
-            st.selectbox("Intended Bloom level", BLOOM_LEVELS, key=lo_level_key)
+            st.selectbox("Intended Bloom level", const.BLOOM_LEVELS, key=lo_level_key)
             lo["intended_level"] = ss[lo_level_key]
             # Inline guidance under picker
-            st.caption(f"##### ℹ️ {BLOOM_DEFS[lo['intended_level']]}")
-            st.caption(f"**Common verbs:** {BLOOM_VERBS[lo['intended_level']]}")
+            st.caption(f"##### ℹ️ {const.BLOOM_DEFS[lo['intended_level']]}")
+            st.caption(f"**Common verbs:** {const.BLOOM_VERBS[lo['intended_level']]}")
 
             # ---- Per-LO invalidation when LO text or intended level changes ────
             module_sig = ss.get("module_sig","")
             current_align_sig = _sig_alignment(lo["text"], lo["intended_level"], module_sig)
             prev_align_sig = lo.get("alignment_sig")     
             if prev_align_sig and prev_align_sig != current_align_sig:
-                lo.pop("alignment", None)
-                lo.pop("final_text", None)
-                lo.pop("generation_sig", None)
-                ss["questions"].pop(lo["id"], None)
-                lo["alignment_sig"] = None
-                ss.pop(f"sug_{lo['id']}", None)
-
-                st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")        
+                clear_alignment(lo)
+                clear_questions(lo["id"])
+                st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")
 
 
             if st.button(":x: Delete", key=f"del_{lo['id']}"):
@@ -286,6 +305,7 @@ def render_step_2():
                 ss.pop(lo_text_key, None)
                 ss.pop(lo_level_key, None)
                 ss["los"].remove(lo)
+                clear_questions(lo["id"])
                 st.rerun()
 
     # Add-new button at the bottom of the LO section
@@ -314,6 +334,10 @@ def render_step_2():
             lo["alignment_sig"] = _sig_alignment(
                 lo["text"], lo["intended_level"], ss.get("module_sig","")
             )
+            # Update suggested LO in session state for editing in text area
+            sug_key = f"sug_{lo['id']}"
+            if sug_key in ss:
+                ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
 
     for i, lo in enumerate(list(ss["los"])):
         if not lo.get("alignment"): continue
@@ -327,13 +351,14 @@ def render_step_2():
 
             # ---- Suggested rewrite: seed once, then bind to key (editable)
             sug_key = f"sug_{lo['id']}"
+            # First time seeding or if user has already accepted a final text before
             if sug_key not in ss:
-                ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
+                ss[sug_key] = lo.get("final_text") or lo["alignment"].get("suggested_lo") or lo["text"  ]
             final = st.text_area("Suggested rewrite (editable)", key=sug_key)
             st.caption("Edits here are not saved until you click **Accept as final**.")
         
             
-            if st.button("Accept as final", key=f"accept_{lo['id']}"):
+            if st.button("Accept as final", key=f"accept_{lo['id']}"): #disabled=not final.strip()
                 lo["final_text"] = final
                 st.success("Accepted. Final LO updated.")
 
@@ -345,11 +370,9 @@ def render_step_2():
                     )
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    ss.pop(f"sug_{lo['id']}", None)
-                    ss["questions"].pop(lo["id"], None)
+                    #ss.pop(f"sug_{lo['id']}", None)
+                    clear_questions(lo["id"])
                     lo["generation_sig"] = None
-                    ss.pop("docx_file", None)
-                    ss.pop("questions_sig", None)
                     st.info("Cleared questions for this LO due to final text change.")
     
     # --- Navigation ---
@@ -448,10 +471,6 @@ def render_step_3():
 # 4 Export
 ################################################
 def render_step_4():
-    # st.header("📄 Export to Word")
-    # if st.button("Build DOCX file", disabled=not ss["questions"]):
-    #     doc=build_docx(ss["los"], ss["questions"])
-    #     st.download_button("Download", data=doc, file_name="assessment_questions.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     st.header("📄 Export to Word")
     build_disabled = not ss.get("questions")
