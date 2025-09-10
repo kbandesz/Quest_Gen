@@ -56,8 +56,9 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
 ################################################
 # App setup
 ################################################
-st.set_page_config(page_title="Bloom Alignment & Question Generator", page_icon="🧠", layout="wide")
-st.title(":mortar_board: Learning Objective and Question Generator")
+st.set_page_config(page_title="QGenAi", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.title(":mortar_board: QGenAi")
+st.write("_The AI-Aid to Write Instructionally Sound Learning Objectives and Assessment Questions_")
 
 # Initialize session state
 ss = st.session_state
@@ -122,6 +123,7 @@ def reset_uploaded_content() -> None:
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
     ss["uploader_key"] += 1
+
 ################################################
 # Sidebar for settings
 ################################################
@@ -169,17 +171,36 @@ with st.sidebar:
 # Visual Stepper
 ################################################
 def render_stepper():
-    steps = ["Upload", "Define & Align", "Generate", "Export"]
+
+    upload = """
+**📂 Upload**  
+Add your course material files
+"""
+
+    LOs = """
+**🎯 Objectives**  
+Define and analyze learning objectives
+"""
+
+    generate = """
+**✍️ Questions**  
+Create questions with AI support
+"""
+    export = """
+**📄 Download**  
+Export questions to Microsoft Word
+        """
+
+    steps = [upload, LOs, generate, export]
     cols = st.columns(len(steps))
     for i, (col, step_name) in enumerate(zip(cols, steps)):
         with col:
             if i + 1 == ss["current_step"]:
-                st.markdown(f"**{i+1}. {step_name}**")
+                st.info(f"{step_name}")
             elif i + 1 < ss["current_step"]:
-                st.markdown(f"✅ {i+1}. {step_name}")
+                st.success(f"{step_name}")
             else:
-                st.markdown(f"_{i+1}. {step_name}_")
-    "-----------------------------------------------------"
+                st.markdown(f"{step_name}")
 
 ################################################
 # 1 Upload Course Content
@@ -256,59 +277,114 @@ def render_step_1():
 # 2 Objectives & Alignment
 ################################################
 def render_step_2():
-    st.header("🎯 Define Objectives & Check Alignment")
+    help_objectives = """Enter your course learning objectives and the intented level cognitive complexity
+                    according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
+                    the app provides you plenty of information and tips below and
+                    AI will also help you refine your objectives."""
+    st.header("🎯 Learning Objectives", help=help_objectives)
 
-    # 2.a Define LOs
     # General LO writing advice
     st.markdown(const.LO_WRITING_TIPS)
 
     # Visual reference (expandable pyramid)
     with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
-        st.image(const.BLOOM_PYRAMID_IMAGE,
-                use_container_width=True)
+        st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
 
-    # List of LOs (editable)
+    # --- Helper for finalized visual style ---
+    def finalized_style(is_final):
+        if is_final:
+            return "background-color: #e6ffe6; border: 2px solid #2ecc40; border-radius: 6px;"
+        return ""
+
+    # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
-        with st.container(border=True):
-            prev_text = lo.get("text","")
-            prev_level = lo.get("intended_level","Remember")
+        lo_text_key = f"lo_text_{lo['id']}"
+        lo_level_key = f"lo_level_{lo['id']}"
+        prev_text = lo.get("text", "")
+        prev_level = lo.get("intended_level", "Remember")
+        is_final = bool(lo.get("final_text"))
 
-            # ---- LO text: seed once, then bind to key
-            lo_text_key = f"lo_text_{lo['id']}"
-            if lo_text_key not in ss:
-                ss[lo_text_key] = prev_text
-            st.text_area(f"**Objective #{i+1}**", key=lo_text_key)
+        # Seed widget state only once, on creation
+        if lo_text_key not in ss:
+            ss[lo_text_key] = prev_text
+        if lo_level_key not in ss:
+            ss[lo_level_key] = prev_level
+
+        # Invalidate finalization if LO text or level changes (compare to last finalized values)
+        module_sig = ss.get("module_sig", "")
+        current_align_sig = _sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
+        prev_align_sig = lo.get("alignment_sig")
+        if prev_align_sig and prev_align_sig != current_align_sig:
+            clear_alignment(lo)
+            clear_questions(lo["id"])
+            lo["final_text"] = None
+            is_final = False
+
+        # Container for LO
+        with st.container(border=True):
+            # --- Visual cue for finalized ---
+            if is_final:
+                st.markdown(
+                    '<div style="background-color:#e6ffe6;border:2px solid #2ecc40;border-radius:6px;padding:0.5em 0.5em 0.5em 0.5em;margin-bottom:0.5em;">'
+                    '<b>Finalized.</b> Click Re-open to edit.'
+                    '</div>', unsafe_allow_html=True)
+
+            # --- LO text area ---
+            ta = st.text_area(f"**Objective #{i+1}**", key=lo_text_key, disabled=is_final,
+                             label_visibility="visible",
+                             help="Edit your learning objective here.")
             lo["text"] = ss[lo_text_key]
 
-            # ---- Intended level: seed once, then bind to key
-            lo_level_key = f"lo_level_{lo['id']}"
-            if lo_level_key not in ss:
-                ss[lo_level_key] = prev_level
-            st.selectbox("Intended Bloom level", const.BLOOM_LEVELS, key=lo_level_key)
+            # --- Bloom level selector ---
+            sel = st.selectbox("Intended Bloom level", const.BLOOM_LEVELS, key=lo_level_key, disabled=is_final,
+                               help="Select the intended Bloom's taxonomy level.",
+                               index=const.BLOOM_LEVELS.index(ss[lo_level_key]),
+                               label_visibility="visible")
             lo["intended_level"] = ss[lo_level_key]
-            # Inline guidance under picker
             st.caption(f"##### ℹ️ {const.BLOOM_DEFS[lo['intended_level']]}")
             st.caption(f"**Common verbs:** {const.BLOOM_VERBS[lo['intended_level']]}")
 
-            # ---- Per-LO invalidation when LO text or intended level changes ────
-            module_sig = ss.get("module_sig","")
-            current_align_sig = _sig_alignment(lo["text"], lo["intended_level"], module_sig)
-            prev_align_sig = lo.get("alignment_sig")     
-            if prev_align_sig and prev_align_sig != current_align_sig:
-                clear_alignment(lo)
-                clear_questions(lo["id"])
-                st.info(f"Cleared alignment and questions for LO #{i+1} due to changes.")
+            # --- Per-LO buttons ---
+            btn_cols = st.columns([1, 1, 1, 1])
+            with btn_cols[0]:
+                if st.button("Alignment Check", key=f"align_{lo['id']}", disabled=is_final, help="Have another pair of AI eyes check your LO."):
+                    lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                    lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                    st.rerun()
+            with btn_cols[1]:
+                if st.button("Accept as final", key=f"accept_{lo['id']}", disabled=is_final):
+                    lo["final_text"] = lo["text"]
+                    # Invalidate questions if needed
+                    current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                    prev_gen_sig = lo.get("generation_sig")
+                    if prev_gen_sig and prev_gen_sig != current_gen_sig:
+                        clear_questions(lo["id"])
+                        lo["generation_sig"] = None
+                    st.rerun()
+            with btn_cols[2]:
+                if is_final:
+                    if st.button("Re-open", key=f"unfinal_{lo['id']}"):
+                        lo["final_text"] = None
+                        st.rerun()
+            with btn_cols[3]:
+                if st.button(":x: Delete", key=f"del_{lo['id']}"):
+                    ss.pop(lo_text_key, None)
+                    ss.pop(lo_level_key, None)
+                    ss["los"].remove(lo)
+                    clear_questions(lo["id"])
+                    st.rerun()
 
+            # --- Alignment result (if available) ---
+            if lo.get("alignment") is not None:
+                label = lo["alignment"]["label"]
+                color = {"consistent": "green", "ambiguous": "orange", "inconsistent": "red"}[label]
+                st.markdown(f"**Alignment:** :{color}[{label}]")
+                if lo["alignment"]["reasons"]:
+                    st.markdown("- " + "\n- ".join(lo["alignment"]["reasons"]))
+                if label != "consistent" and lo["alignment"].get("suggested_lo"):
+                    st.markdown(f"**Suggested re-write:**\n> {lo['alignment']['suggested_lo']}")
 
-            if st.button(":x: Delete", key=f"del_{lo['id']}"):
-                # Clean up widget state keys for this LO so new LOs seed cleanly
-                ss.pop(lo_text_key, None)
-                ss.pop(lo_level_key, None)
-                ss["los"].remove(lo)
-                clear_questions(lo["id"])
-                st.rerun()
-
-    # Add-new button at the bottom of the LO section
+    # --- Add-new button at the bottom ---
     if st.button("➕ Add Learning Objective", key="add_lo_bottom"):
         ss["los"].append({
             "id": str(uuid.uuid4()),
@@ -320,61 +396,27 @@ def render_step_2():
             "generation_sig": None
         })
         st.rerun()
-    
-    # 2.b Alignment check
-    st.subheader("Alignment Check")
-    # Helper to check if we can run alignment
-    def can_run_alignment(ss) -> bool:
-        return bool(ss["module_text"] and ss["los"] and all(lo.get("text") for lo in ss["los"]))
 
-    if st.button("Run alignment", disabled=not can_run_alignment(ss)):
-        for lo in ss["los"]:
-            lo["alignment"]=check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-            # store signature for alignment result
-            lo["alignment_sig"] = _sig_alignment(
-                lo["text"], lo["intended_level"], ss.get("module_sig","")
-            )
-            # Update suggested LO in session state for editing in text area
-            sug_key = f"sug_{lo['id']}"
-            if sug_key in ss:
-                ss[sug_key] = lo["alignment"].get("suggested_lo") or lo["text"]
-
-    for i, lo in enumerate(list(ss["los"])):
-        if not lo.get("alignment"): continue
-        with st.container(border=True):
-            st.subheader(f"LO #{i+1}: {lo['text'][:80]}")
-            label=lo["alignment"]["label"]
-            color={"consistent":"green","ambiguous":"orange","inconsistent":"red"}[label]
-            st.markdown(f"**Alignment:** :{color}[{label}]")
-            if lo["alignment"]["reasons"]:
-                st.markdown("- " + "\n- ".join(lo["alignment"]["reasons"]))
-
-            # ---- Suggested rewrite: seed once, then bind to key (editable)
-            sug_key = f"sug_{lo['id']}"
-            # First time seeding or if user has already accepted a final text before
-            if sug_key not in ss:
-                ss[sug_key] = lo.get("final_text") or lo["alignment"].get("suggested_lo") or lo["text"  ]
-            final = st.text_area("Suggested rewrite (editable)", key=sug_key)
-            st.caption("Edits here are not saved until you click **Accept as final**.")
-        
-            
-            if st.button("Accept as final", key=f"accept_{lo['id']}"): #disabled=not final.strip()
-                lo["final_text"] = final
-                st.success("Accepted. Final LO updated.")
-
-                # ── If final_text edited, invalidate questions only ───────────
-                current_gen_sig = _sig_generation(
-                    lo.get("final_text"),
-                    lo["intended_level"],
-                    ss.get("module_sig","")
-                    )
+    # --- Check All / Accept All buttons ---
+    all_btn_cols = st.columns([1, 1])
+    with all_btn_cols[0]:
+        if st.button("Check All", key="check_all", disabled=not ss["los"]):
+            for lo in ss["los"]:
+                lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+            st.rerun()
+    with all_btn_cols[1]:
+        if st.button("Accept All", key="accept_all", disabled=not ss["los"]):
+            for lo in ss["los"]:
+                lo["final_text"] = lo["text"]
+                # Invalidate questions if needed
+                current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    #ss.pop(f"sug_{lo['id']}", None)
                     clear_questions(lo["id"])
                     lo["generation_sig"] = None
-                    st.info("Cleared questions for this LO due to final text change.")
-    
+            st.rerun()
+
     # --- Navigation ---
     st.divider()
     cols = st.columns([1, 1])
@@ -383,14 +425,12 @@ def render_step_2():
             ss["current_step"] = 1
             st.rerun()
     with cols[1]:
-        # Helper to check if all LOs have been finalized
         def all_los_finalized():
             if not ss.get("los"): return False
             return all(lo.get("final_text") for lo in ss["los"])
-
         if st.button("Next: Generate Questions →", disabled=not all_los_finalized()):
             ss["current_step"] = 3
-            st.rerun() 
+            st.rerun()
 
 #################################################
 # 3 Generate questions
@@ -426,7 +466,8 @@ def render_step_3():
         # After regeneration, update questions_sig and clear stale DOCX
         ss["questions_sig"] = _sig_questions(ss["questions"])
         ss.pop("docx_file", None)
-
+    
+    # Go over all LOs
     for lo in ss["los"]:
         qs=ss["questions"].get(lo["id"],[])
         if not qs: continue
@@ -439,11 +480,21 @@ def render_step_3():
                                        label_visibility="collapsed", height="content")
                 # Answer options
                 for opt in q["options"]:
-                    opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"], key=f"opt_{lo['id']}_{idx}_{opt['id']}")
-                    with st.expander("Feedback", expanded=False):
-                        opt["option_rationale"]=st.text_area(f"Feedback", opt.get("option_rationale",""), key=f"rat_{lo['id']}_{idx}_{opt['id']}", label_visibility="collapsed")
+                    cols = st.columns([1, 30])
+                    with cols[0]:
+                        st.markdown(f"**({opt['id']})**")
+                    with cols[1]:
+                        opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"],
+                                                  key=f"opt_{lo['id']}_{idx}_{opt['id']}",
+                                                  label_visibility="collapsed")
+                # Correct answer
                 current=["A","B","C","D"].index(q["correct_option_id"])
                 q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
+                # Feedback for each option
+                st.markdown("Feedback")
+                for opt in q["options"]:
+                    opt["option_rationale"]=st.text_area(f"**({opt['id']})**", opt.get("option_rationale",""), key=f"rat_{lo['id']}_{idx}_{opt['id']}")
+                # Content reference and cognitive rationale
                 q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""), key=f"ref_{lo['id']}_{idx}")
                 q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
 
