@@ -276,18 +276,25 @@ def render_step_1():
 # 2 Objectives & Alignment
 ################################################
 def render_step_2():
-    help_objectives = """Enter your course learning objectives and the intented level cognitive complexity
+    help_objectives = """Enter your course learning objectives and the intented cognitive complexity
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
-                    the app provides you plenty of information and tips below and
-                    AI will also help you refine your objectives."""
+                    you will find information and tips below and AI will also help you refine your objectives."""
     st.header("🎯 Learning Objectives", help=help_objectives)
+    
+    st.markdown(const.LO_DEF)
+    with st.container(border=True):
+        st.markdown("**Tips for Writing Effective Learning Objectives**")
+        # SMART Criteria Checklist
+        with st.expander("SMART Criteria Checklist", expanded=False):
+            st.markdown(const.LO_WRITING_TIPS_ENHANCED["smart_criteria"])
 
-    # General LO writing advice
-    st.markdown(const.LO_WRITING_TIPS)
+        # General LO writing advice
+        #st.markdown(const.LO_WRITING_TIPS)
 
-    # Visual reference (expandable pyramid)
-    with st.expander("Bloom's Taxonomy Pyramid", expanded=False):
-        st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
+        # Visual reference (expandable pyramid)
+        with st.expander("Bloom's Taxonomy", expanded=False):
+            st.markdown(const.BLOOM_DEF)
+            st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
 
     # --- Helper for finalized visual style ---
     def finalized_style(is_final):
@@ -340,7 +347,7 @@ def render_step_2():
                                index=const.BLOOM_LEVELS.index(ss[lo_level_key]),
                                label_visibility="visible")
             lo["intended_level"] = ss[lo_level_key]
-            st.caption(f"##### ℹ️ {const.BLOOM_DEFS[lo['intended_level']]}")
+            st.caption(f"##### ℹ️ {const.BLOOM_LEVEL_DEFS[lo['intended_level']]}")
             st.caption(f"**Common verbs:** {const.BLOOM_VERBS[lo['intended_level']]}")
 
             # --- Per-LO buttons ---

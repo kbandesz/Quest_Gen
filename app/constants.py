@@ -2,9 +2,16 @@
 MODULE_TOKEN_LIMIT = 27_000
 
 # Bloom content (UARK TIPS)
+BLOOM_DEF = """
+**Bloom's Taxonomy** is an important educational framework that categorizes different levels of cognitive
+processes involved in learning. When writing learning objectives, consider the complexity of the cognitive
+skills you want the learners to acquire or demonstrate (and that they can feasibly acquire or
+demonstrate).
+"""
+
 BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 
-BLOOM_DEFS = {
+BLOOM_LEVEL_DEFS = {
     "Remember": "Retrieve, recognize, and recall relevant knowledge from long-term memory.",
     "Understand": "Construct meaning through interpreting, exemplifying, classifying, summarizing, inferring, comparing, and explaining.",
     "Apply": "Carry out or using a procedure for execution or implementation.",
@@ -31,6 +38,31 @@ LO_WRITING_TIPS = """
 - Ensure objectives are **aligned with course content**.
 - Use the **Bloom's Taxonomy** framework to identify the cognitive skills learners need to demonstrate.
 """
+
+# In constants.py, enhance LO_WRITING_TIPS
+LO_WRITING_TIPS_ENHANCED = {
+    "smart_criteria": """
+**SMART Learning Objectives:**
+- **S**pecific - Clear and unambiguous
+- **M**easurable - Observable and assessable
+- **A**chievable - Realistic for the course duration
+- **R**elevant - Aligned with course goals
+- **T**ime-bound - Achievable within module timeframe
+    """,
+    "avoid_verbs": ["Appreciate", "Be aware of", "Comprehend", "Is familiar with", "Know", "Learn", "Realize", "Understand"],
+    "structure_tip": "Each LO should have: 1) An action verb, 2) A content/skill area"
+}
+
+LO_DEF = """
+**Learning objectives** are statements that answer the question: What will learners be able to do upon
+completion of a course or training?
+
+Learning objectives have two main parts:
+1. an **action verb**: the desired learner behavior
+2. a **content/skill area**: a description of the target content or skill
+"""
+
+
 # Assets
 BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
 
