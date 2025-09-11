@@ -114,7 +114,6 @@ def clear_module_dependent_outputs() -> None:
     ss["los"].clear()
     clear_questions()
 
-
 def reset_uploaded_content() -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["uploaded_files"] = []
@@ -125,7 +124,7 @@ def reset_uploaded_content() -> None:
     ss["uploader_key"] += 1
 
 ################################################
-# Sidebar for settings
+# %% Sidebar for settings
 ################################################
 with st.sidebar:
     if st.button("Reset session"):
@@ -348,9 +347,10 @@ def render_step_2():
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
                 if st.button("Alignment Check", key=f"align_{lo['id']}", disabled=is_final, help="Have another pair of AI eyes check your LO."):
-                    lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                    lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
-                    st.rerun()
+                    with st.spinner("Checking alignment..."):
+                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                        lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}", disabled=is_final):
                     lo["final_text"] = lo["text"]
@@ -401,10 +401,11 @@ def render_step_2():
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
         if st.button("Check All", key="check_all", disabled=not ss["los"]):
-            for lo in ss["los"]:
-                lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
-            st.rerun()
+            with st.spinner("Checking all learning objectives..."):
+                for lo in ss["los"]:
+                    lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                    lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                st.rerun()
     with all_btn_cols[1]:
         if st.button("Accept All", key="accept_all", disabled=not ss["los"]):
             for lo in ss["los"]:
@@ -449,23 +450,25 @@ def render_step_3():
         key="n_questions",
     )
     if st.button("Generate", disabled=not can_generate(ss)):
-        for lo in ss["los"]:
-            payload =   generate_questions(
-                lo.get("final_text"),
-                lo["intended_level"],
-                ss["module_text"],
-                n_questions=ss["n_questions"]
+        with st.spinner("Generating questions..."):
+            # Go over all LOs and generate questions
+            for lo in ss["los"]:
+                payload =   generate_questions(
+                    lo.get("final_text"),
+                    lo["intended_level"],
+                    ss["module_text"],
+                    n_questions=ss["n_questions"]
+                    )
+                ss["questions"][lo["id"]] = payload["questions"]
+                # store signature for question generation
+                lo["generation_sig"] = _sig_generation(
+                    lo.get("final_text"),
+                    lo["intended_level"],
+                    ss.get("module_sig","")
                 )
-            ss["questions"][lo["id"]] = payload["questions"]
-            # store signature for question generation
-            lo["generation_sig"] = _sig_generation(
-                lo.get("final_text"),
-                lo["intended_level"],
-                ss.get("module_sig","")
-            )
-        # After regeneration, update questions_sig and clear stale DOCX
-        ss["questions_sig"] = _sig_questions(ss["questions"])
-        ss.pop("docx_file", None)
+            # After regeneration, update questions_sig and clear stale DOCX
+            ss["questions_sig"] = _sig_questions(ss["questions"])
+            ss.pop("docx_file", None)
     
     # Go over all LOs
     for lo in ss["los"]:
@@ -474,29 +477,29 @@ def render_step_3():
         with st.container(border=True):
             st.subheader(f"{lo.get('final_text')}")
             for idx,q in enumerate(qs):
-                # Question stem
-                st.markdown(f"**Question {idx+1}**")
-                q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
-                                       label_visibility="collapsed", height="content")
-                # Answer options
-                for opt in q["options"]:
-                    cols = st.columns([1, 30])
-                    with cols[0]:
-                        st.markdown(f"**({opt['id']})**")
-                    with cols[1]:
-                        opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"],
-                                                  key=f"opt_{lo['id']}_{idx}_{opt['id']}",
-                                                  label_visibility="collapsed")
-                # Correct answer
-                current=["A","B","C","D"].index(q["correct_option_id"])
-                q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
-                # Feedback for each option
-                st.markdown("Feedback")
-                for opt in q["options"]:
-                    opt["option_rationale"]=st.text_area(f"**({opt['id']})**", opt.get("option_rationale",""), key=f"rat_{lo['id']}_{idx}_{opt['id']}")
-                # Content reference and cognitive rationale
-                q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""), key=f"ref_{lo['id']}_{idx}")
-                q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
+                with st.expander(f"Question {idx+1}", expanded=False):
+                    # Question stem
+                    q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
+                                        label_visibility="collapsed")
+                    # Answer options
+                    for opt in q["options"]:
+                        cols = st.columns([1, 30])
+                        with cols[0]:
+                            st.markdown(f"**({opt['id']})**")
+                        with cols[1]:
+                            opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"],
+                                                    key=f"opt_{lo['id']}_{idx}_{opt['id']}",
+                                                    label_visibility="collapsed")
+                    # Correct answer
+                    current=["A","B","C","D"].index(q["correct_option_id"])
+                    q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
+                    # Feedback for each option
+                    st.markdown("Feedback")
+                    for opt in q["options"]:
+                        opt["option_rationale"]=st.text_area(f"**({opt['id']})**", opt.get("option_rationale",""), key=f"rat_{lo['id']}_{idx}_{opt['id']}")
+                    # Content reference and cognitive rationale
+                    q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""), key=f"ref_{lo['id']}_{idx}")
+                    q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""), key=f"rat_{lo['id']}_{idx}")
 
     # After all widgets have applied edits, detect real changes
     new_q_sig = _sig_questions(ss.get("questions", {}))

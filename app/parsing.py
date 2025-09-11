@@ -1,9 +1,9 @@
-import io, math, re
+import io, re
 from typing import Tuple, List, Union
 from pypdf import PdfReader
 import mammoth  # for docx to text
 from pptx import Presentation  # for pptx to text (python-pptx)
-
+import tiktoken
 
 # PDF
 def _read_pdf(f) -> str:
@@ -72,15 +72,16 @@ def _extract_single(uploaded_file) -> str:
         name = uploaded_file.name.lower()
         if name.endswith(".pdf"):
             return _normalize(_read_pdf(uploaded_file))
-        if name.endswith(".docx"):
+        elif name.endswith(".docx"):
             return _normalize(_read_docx(uploaded_file))
-        if name.endswith(".pptx"):
+        elif name.endswith(".pptx"):
             return _normalize(_read_pptx(uploaded_file))
-        if name.endswith(".txt"):
+        elif name.endswith(".txt"):
             return _normalize(_read_txt(uploaded_file))
-        raise ValueError("Unsupported file type")
+        else:
+            raise ValueError("Unsupported file type: {uploaded_file.name}")
     except Exception as e:
-        raise ValueError(f"Failed to parse the file: {uploaded_file.name}. Please check the file type and ensure it is not password-protected or corrupted.")
+        raise ValueError(f"Failed to parse '{uploaded_file.name}': The file may be corrupted, password-protected, or in an unsupported format.")
 
 def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, int]:
     """
@@ -99,7 +100,7 @@ def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, i
         parts.append(_extract_single(f))
     combined = ("\n\n----- FILE BREAK -----\n\n").join(p for p in parts if p)
 
-    # heuristic token estimate: 1 token ≈ 0.75 words  -> tokens ≈ words / 0.75
-    words = len(re.findall(r"\S+", combined))
-    tokens_est = int(math.ceil(words / 0.75))
-    return combined, tokens_est
+    # Get the encoding for a gpt-4 model
+    encoding = tiktoken.get_encoding("o200k_base")  # same as gpt-4o
+    tokens = len(encoding.encode(combined))
+    return combined, tokens
