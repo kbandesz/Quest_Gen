@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
-import random
 from .prompts import ALIGN_SYSTEM_PROMPT, QUESTGEN_SYSTEM_PROMPT, build_align_user_prompt, build_questgen_user_prompt
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
 from . import constants as const
@@ -28,11 +27,6 @@ def set_runtime_config(mock_mode: bool, model: str) -> None:
         client = None
 
 
-def _mock_alignment_choice(lo_text: str, intended_level: str) -> Dict[str, Any]:
-    """Pick one mock alignment outcome at random."""
-    scenario_fn = random.choice(const.MOCK_ALIGNMENT_SCENARIOS)
-    return scenario_fn(lo_text, intended_level)
-
 def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
     if MOCK_MODE:
         return {"mock":"on"}
@@ -56,32 +50,15 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
 def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:
     if MOCK_MODE:
         # Return a randomized mock scenario to exercise UI branches
-        return _mock_alignment_choice(lo_text, intended_level)
+        return const.generate_mock_alignment_result(lo_text, intended_level)
     user_prompt=build_align_user_prompt(intended_level, lo_text, module_text)
     obj=_chat_json(ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=800, temperature=0.2)
     return validate_alignment_payload(obj)
 
-def _mock_questions(n:int=2)->Dict[str,Any]:
-    qs=[]
-    for i in range(n):
-        qs.append({
-            "type":"MCQ_4",
-            "stem":f"Mock question {i+1}: What is 2 + 2?",
-            "options":[
-                {"id":"A","text":"3","option_rationale":"Off-by-one"},
-                {"id":"B","text":"4","option_rationale":"Correct"},
-                {"id":"C","text":"5","option_rationale":"Common error"},
-                {"id":"D","text":"22","option_rationale":"concat digits"},
-            ],
-            "correct_option_id":"B",
-            "cognitive_rationale":"Remember-level math fact",
-            "contentReference":""
-        })
-    return {"questions":qs}
 
 def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
     if MOCK_MODE:
-        return _mock_questions(n_questions)
+        return const.generate_mock_questions(n_questions)
     user_prompt=build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
     obj=_chat_json(QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
     return validate_questions_payload(obj)

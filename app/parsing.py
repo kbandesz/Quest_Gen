@@ -97,7 +97,7 @@ def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, i
     # Combine in the order provided, with a clear separator between files
     parts: List[str] = []
     for f in files:
-        parts.append(_extract_single(f))
+        parts.append(f"<{f.name}>\n\n{_extract_single(f)}\n\n</{f.name}>")
     combined = ("\n\n----- FILE BREAK -----\n\n").join(p for p in parts if p)
 
     # Get the encoding for a gpt-4 model
