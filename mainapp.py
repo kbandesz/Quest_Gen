@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import hashlib
 
 from app.parsing import extract_text_and_tokens
-from app.generation import check_alignment, generate_questions, set_runtime_config
+from app.generation import check_alignment, generate_questions, generate_outline, set_runtime_config
 from app.export import build_docx
 import app.constants as const
 
@@ -56,7 +56,7 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
 ################################################
 # App setup
 ################################################
-st.set_page_config(page_title="QGenAi", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="IMF LearnAI", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
 
 # Initialize session state
 ss = st.session_state
@@ -81,7 +81,7 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Banner based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f":mortar_board: QGenAi{mock_warning if ss['MOCK_MODE'] else ''}")
+st.title(f":mortar_board: IMF LearnAI{mock_warning if ss['MOCK_MODE'] else ''}")
 st.write("_The AI support you need to create effective course outlines, learning objectives, and assessment questions_")
 
 # --------------------------------------------------------------
@@ -140,6 +140,7 @@ with st.sidebar:
 
         # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
+            ss.pop("generated_outline", None)
             clear_module_dependent_outputs()
             reset_uploaded_content()
             ss["current_step"] = 1
@@ -165,8 +166,9 @@ with st.sidebar:
 def render_stepper():
     st.write("")
 
+
     outline = """
-**🗂️ 1. Outline**  
+**📚 1. Outline**  
 Plan your course structure
 """
     upload = """
@@ -204,6 +206,7 @@ Export questions to Microsoft Word
                     with st.container(border=True):
                         st.markdown(step_name)
 
+
     # crisp separation from the rest of the page
     st.divider()
     # small bottom breathing room
@@ -221,23 +224,13 @@ Investing time upfront in the outline will make the presentation of content more
     with st.expander("**Structure of an IMF course**", expanded=False):
         st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
     
-    # # Module metadata inputs
-    # col1, col2 = st.columns(2)
-    # with col1:
-    #     st.number_input("Number of sections", min_value=1, max_value=8, value=4, key="n_sections")
-    # with col2:
-    #     st.selectbox("Primary delivery mode", ["Text-heavy", "Video-based", "Mixed media"], key="delivery_mode")
-    
-    # # Time estimation
-    # st.metric("Estimated learning time", f"{ss['n_sections'] * 30} - {ss['n_sections'] * 45} minutes")
-    
     # --- User Inputs ---
     course_title = st.text_input("Enter the Course Title", "Public Debt Sustainability Analysis")
     files = st.file_uploader(
         "Upload Source Materials (e.g., papers, presentations, notes)",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
-        key=f"course_file_uploader_{ss["uploader_key"]}",
+        key=f"source_file_uploader_{ss["uploader_key"]}",
         disabled=ss["MOCK_MODE"]
         ) or []
     
@@ -278,16 +271,7 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
-            # --- Prepare Input for LLM ---
-            course_title = course_title.strip()
-
-
-            # --- Simulate LLM Call ---
-            # In a real app, the `SYSTEM_PROMPT` would be combined with the inputs
-            # and sent to the LLM API.
-            generated_json = const.generate_mock_llm_response(course_title, ss["course_text"])
-
-            ss['generated_outline'] = generated_json
+            ss['generated_outline'] = generate_outline(course_title.strip(), ss["course_text"])
 
     def display_outline(outline_json):
         """
@@ -355,10 +339,10 @@ Investing time upfront in the outline will make the presentation of content more
 # 2 Upload Course Content
 ################################################
 def render_step_2():
-    help_upload = """**Tip:** You can upload any content that you will use to develop the course.
+    help_upload = """**Tip:** You can upload any content that you will use to develop the module.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the course content."""
-    st.header("📂 Upload Course Material", help=help_upload)
+                presentations, or any other documents that you plan to use for writing the module content."""
+    st.header("📂 Upload Module Material", help=help_upload)
 
     files=st.file_uploader(
         "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
@@ -397,8 +381,8 @@ def render_step_2():
 
         if ss["module_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
-        elif ss.get("los"):
-            st.info("Module content changed — LOs and questions cleared.")
+        # elif ss.get("los"):
+        #     st.info("Module content changed — LOs and questions cleared.")
 
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["module_files"]:

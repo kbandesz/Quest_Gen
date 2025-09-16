@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
-from .prompts import ALIGN_SYSTEM_PROMPT, QUESTGEN_SYSTEM_PROMPT, build_align_user_prompt, build_questgen_user_prompt
+from . import prompts
 from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
 from . import constants as const
 
@@ -51,14 +51,21 @@ def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,
     if MOCK_MODE:
         # Return a randomized mock scenario to exercise UI branches
         return const.generate_mock_alignment_result(lo_text, intended_level)
-    user_prompt=build_align_user_prompt(intended_level, lo_text, module_text)
-    obj=_chat_json(ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=800, temperature=0.2)
+    user_prompt=prompts.build_align_user_prompt(lo_text, intended_level, module_text)
+    obj=_chat_json(prompts.ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=800, temperature=0.2)
     return validate_alignment_payload(obj)
 
 
 def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
     if MOCK_MODE:
         return const.generate_mock_questions(n_questions)
-    user_prompt=build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
-    obj=_chat_json(QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
+    user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
+    obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
     return validate_questions_payload(obj)
+
+def generate_outline(course_title:str, source_material:str)->Dict[str,Any]:
+    if MOCK_MODE:
+        return const.generate_mock_llm_response(course_title)
+    user_prompt=prompts.build_outline_user_prompt(course_title, source_material)
+    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
+    return obj

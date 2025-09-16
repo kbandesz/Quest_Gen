@@ -51,6 +51,7 @@ BLOOM_VERBS = {
     "Create": "assemble, compose, construct, create, design, develop, formulate, integrate, plan, propose, schematize, simulate"
 }
 
+BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
 
 # LO writing guidance
 LO_DEF = """
@@ -74,10 +75,7 @@ LO_WRITING_TIPS = {
     "avoid_verbs": ["Appreciate", "Aware of", "Comprehend", "Familiar with", "Know", "Learn", "Realize", "Understand"],
 }
 
-BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
-
-# Questions
-
+# Questions writing guidance
 QUESTION_TIPS = {
         "stem_writing": "Keep stems clear and complete. Avoid partial sentences.",
         "distractor_writing": "Make distractors plausible but clearly incorrect.",
@@ -87,7 +85,7 @@ QUESTION_TIPS = {
 ############################################
 # MOCK MODE - No API calls (for offline testing and demos)
 ############################################
-# Create mock module content file
+# Create mock file (for source material and module upload)
 def create_mock_file(mock_file_path: str):
     """Load the mock text file used in MOCK_MODE."""
 
@@ -104,7 +102,7 @@ def create_mock_file(mock_file_path: str):
         # Set the file attributes
         name="mock_uploaded_file.txt",
         size=len(mock_content.encode('utf-8')),
-        last_modified=datetime.now(),
+        last_modified=datetime(2025, 9, 4), # datetime.now()
         
         # Set the behavior of the file methods
         read=mock.MagicMock(return_value=file_data.read()),
@@ -165,7 +163,7 @@ def generate_mock_questions(n:int=2)->Dict[str,Any]:
     return {"questions":qs}
 
 # Mock course outline
-def generate_mock_llm_response(course_title, source_material):
+def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
     """
     Simulates a call to a Large Language Model.
     Returns a pre-defined, structured JSON response for demonstration.
