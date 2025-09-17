@@ -20,8 +20,8 @@ A course may have multiple **modules**.
 - **Module Duration:** 2-3 hours of learning
   - includes ALL learning content elements (text, videos, assessments, activities, etc.)
   - rough estimate: 9,000 words (15 pages) of text per hour
-- **Sections:** 4-5 per module, directly linked to the module's learning objectives 
-- **Units:** Multiple per section
+- **Sections:** 3-5 per module, each with 1-2 learning objectives encompassing units
+- **Units:** Multiple per section, each with a single granular learning objective
 - **Balance of modalities:** Mix text, graphics, video, activities, etc.
 """
 
@@ -30,7 +30,8 @@ BLOOM_DEF = """
 **Bloom's Taxonomy** is an important educational framework that categorizes different levels of cognitive
 processes involved in learning. When writing learning objectives, consider the complexity of the cognitive
 skills you want the learners to acquire or demonstrate (and that they can feasibly acquire or
-demonstrate).
+demonstrate).  
+_To learn more:_ [Using Bloom's Taxonomy to Write Effective Learning Objectives](https://tips.uark.edu/using-blooms-taxonomy/)
 """
 
 BLOOM_LEVEL_DEFS = {
@@ -55,8 +56,8 @@ BLOOM_PYRAMID_IMAGE = "assets/Blooms_Taxonomy_pyramid.jpg"
 
 # LO writing guidance
 LO_DEF = """
-**Learning objectives** are statements that answer the question: What will learners be able to do upon
-completion of a course or training?
+**Learning objectives** are statements that answer the question: _What will learners be able to do upon
+completion of a course or training?_
 
 Learning objectives have two main parts:
 1. an **action verb**: the desired learner behavior
@@ -186,25 +187,16 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
           "moduleTitle": "Foundations of Public Debt Sustainability",
           "overview": "This module introduces the core concepts of public debt sustainability. Learners will explore the main components of the debt dynamic equation and understand how fiscal policy, economic growth, and interest rates interact to determine a country's debt trajectory.",
           "estimatedLearningTime": "2-3 hours",
-          "moduleLevelObjectives": [
-            {
-              "bloomsLevel": "Understand",
-              "objectiveText": "Explain the components of the public debt dynamics equation."
-            },
-            {
-              "bloomsLevel": "Analyze",
-              "objectiveText": "Differentiate between solvent and sustainable debt paths."
-            }
-          ],
           "sections": [
             {
               "sectionTitle": "Introduction to Public Debt",
-              "linkedModuleObjectives": [
-                "Explain the components of the public debt dynamics equation."
+              "sectionLevelObjectives": [
+                { "bloomsLevel": "Understand", "objectiveText": "Explain the fundamental concepts of public debt and the government budget constraint." }
               ],
               "units": [
                 {
                   "unitTitle": "What is Public Debt?",
+                  "unitLevelObjective": { "bloomsLevel": "Remember", "objectiveText": "Define public sector debt and list common metrics." },
                   "keyPoints": [
                     "Definition of public sector debt.",
                     "Common measures and metrics (e.g., Debt-to-GDP ratio)."
@@ -213,6 +205,7 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                 },
                 {
                   "unitTitle": "The Government Budget Constraint",
+                  "unitLevelObjective": { "bloomsLevel": "Understand", "objectiveText": "Explain how government deficits lead to debt accumulation." },
                   "keyPoints": [
                     "Understanding the flow of government revenue and expenditure.",
                     "How deficits lead to debt accumulation."
@@ -223,12 +216,13 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
             },
             {
               "sectionTitle": "The Debt Dynamics Equation",
-              "linkedModuleObjectives": [
-                "Explain the components of the public debt dynamics equation."
+              "sectionLevelObjectives": [
+                { "bloomsLevel": "Apply", "objectiveText": "Apply the debt dynamics equation to identify key variables and calculate the debt-stabilizing primary balance." }
               ],
               "units": [
                 {
                   "unitTitle": "Deconstructing the Equation",
+                  "unitLevelObjective": { "bloomsLevel": "Identify", "objectiveText": "Identify the key variables in the debt dynamics equation." },
                   "keyPoints": [
                     "Identifying key variables: primary balance, interest rate, growth rate."
                   ],
@@ -236,6 +230,7 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                 },
                 {
                   "unitTitle": "Debt-Stabilizing Primary Balance",
+                  "unitLevelObjective": { "bloomsLevel": "Apply", "objectiveText": "Calculate the primary balance required to stabilize the debt ratio." },
                   "keyPoints": [
                     "Calculating the primary balance needed to keep the debt ratio constant."
                   ],
@@ -245,12 +240,13 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
             },
             {
               "sectionTitle": "Solvency and Sustainability",
-              "linkedModuleObjectives": [
-                "Differentiate between solvent and sustainable debt paths."
+              "sectionLevelObjectives": [
+                { "bloomsLevel": "Analyze", "objectiveText": "Differentiate between the concepts of debt solvency and sustainability." }
               ],
               "units": [
                 {
                   "unitTitle": "Defining Solvency",
+                  "unitLevelObjective": { "bloomsLevel": "Understand", "objectiveText": "Explain the concept of government debt solvency." },
                   "keyPoints": [
                     "The government's long-run ability to service its debt."
                   ],
@@ -258,6 +254,7 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                 },
                 {
                   "unitTitle": "Defining Sustainability",
+                  "unitLevelObjective": { "bloomsLevel": "Analyze", "objectiveText": "Distinguish sustainability from solvency." },
                   "keyPoints": [
                     "Maintaining a stable, non-explosive debt path without major policy shifts.",
                     "[NOTE: This topic was not found in the source material but is included for pedagogical completeness.]"
@@ -268,13 +265,13 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
             },
             {
               "sectionTitle": "Module 1 Summary",
-              "linkedModuleObjectives": [
-                "Explain the components of the public debt dynamics equation.",
-                "Differentiate between solvent and sustainable debt paths."
+              "sectionLevelObjectives": [
+                { "bloomsLevel": "Understand", "objectiveText": "Summarize the key principles of public debt sustainability analysis presented in the module." }
               ],
               "units": [
                 {
                   "unitTitle": "Key Takeaways",
+                  "unitLevelObjective": { "bloomsLevel": "Remember", "objectiveText": "Recall the most important concepts of the module." },
                   "keyPoints": [
                     "Recap of the debt dynamics equation.",
                     "Importance of the interest rate-growth differential."

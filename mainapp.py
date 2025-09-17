@@ -222,7 +222,12 @@ def render_step_1():
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
 """)
     with st.expander("**Structure of an IMF course**", expanded=False):
-        st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
+        cols = st.columns([1, 1], gap="medium")
+        with cols[0]:
+            st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
+        with cols[1]:
+            #st.image(const.COURSE_STRUCTURE_IMAGE, use_container_width=True)
+            st.markdown("**COOL VISUAL OF COURSE STRUCTURE WITH LEARNING OBJECTIVES HERE**")
     
     # --- User Inputs ---
     course_title = st.text_input("Enter the Course Title", "Public Debt Sustainability Analysis")
@@ -292,22 +297,30 @@ Investing time upfront in the outline will make the presentation of content more
                 st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
                 st.info(f"**Estimated Learning Time:** {module.get('estimatedLearningTime', 'N/A')}")
                 
-                st.markdown("**Module-Level Learning Objectives:**")
-                for obj in module.get("moduleLevelObjectives", []):
+                # Dynamically collect section objectives to display at the module level
+                module_objectives = []
+                for section in module.get("sections", []):
+                    module_objectives.extend(section.get("sectionLevelObjectives", []))
+
+                st.markdown("**Module-Level Learning Objectives (Aggregated from Sections):**")
+                for obj in module_objectives:
                     st.markdown(f"- **({obj.get('bloomsLevel', 'N/A')})**: {obj.get('objectiveText', 'N/A')}")
                 
                 st.markdown("---")
 
                 for j, section in enumerate(module.get("sections", [])):
                     st.subheader(f"Section {i+1}.{j+1}: {section.get('sectionTitle', 'N/A')}")
-                    linked_obj_list = section.get("linkedModuleObjectives", [])
-                    formatted = ", ".join(f"`{o}`" for o in linked_obj_list) or "_None_"
-                    st.markdown(f"**Links to Objectives:** {formatted}")
+                    
+                    st.markdown("**Section-Level Objective(s):**")
+                    for s_obj in section.get("sectionLevelObjectives", []):
+                        st.info(f"**({s_obj.get('bloomsLevel', 'N/A')})**: {s_obj.get('objectiveText', 'N/A')}")
 
                     for k, unit in enumerate(section.get("units", [])):
                         st.markdown(f"**Unit {i+1}.{j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**")
                         
-                        # Use a more structured layout for unit details
+                        unit_obj = unit.get("unitLevelObjective", {})
+                        st.markdown(f"> _**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
+
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             st.markdown("**Key Points:**")
@@ -316,7 +329,7 @@ Investing time upfront in the outline will make the presentation of content more
                         with col2:
                             st.markdown("**Suggested Format:**")
                             st.success(f"{unit.get('suggestedFormat', 'N/A')}")
-                        st.markdown("") # Add some space
+                        st.markdown("") 
 
 
     # --- Display Output ---
@@ -420,16 +433,15 @@ def render_step_3():
     st.markdown(const.LO_DEF)
     with st.container(border=True):
         st.markdown("**Tips for Writing Effective Learning Objectives**")
+        st.markdown("Objectives should be developed with the **_SMART_** criteria in mind: **S**pecific, **M**easurable, **A**chievable, **R**ealistic and **T**ime-bound.")
         # SMART Criteria Checklist
         with st.expander("SMART Criteria Checklist", expanded=False):
             st.markdown(const.LO_WRITING_TIPS["smart_criteria"])
-
-        # General LO writing advice
-        #st.markdown(const.LO_WRITING_TIPS)
-
+        
+        # Bloom's Taxonomy reference
+        st.markdown(const.BLOOM_DEF)
         # Visual reference (expandable pyramid)
         with st.expander("Bloom's Taxonomy", expanded=False):
-            st.markdown(const.BLOOM_DEF)
             cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
             with cols[1]:
                 st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
