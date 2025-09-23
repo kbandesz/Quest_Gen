@@ -1,16 +1,16 @@
 import streamlit as st
-import io, os, uuid
-from typing import List, Dict, Optional
-from dotenv import load_dotenv
+import uuid
+from typing import Dict, Any, Optional
+#from dotenv import load_dotenv
 import hashlib
 
-from app.parsing import extract_text_and_tokens
-from app.generation import check_alignment, generate_questions, generate_outline, set_runtime_config
-from app.export import build_docx
+from app.parse_input import extract_text_and_tokens
+from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
+from app.export import build_questions_docx
 import app.constants as const
 
 # Load environment variables (OpenAI API key) from .env
-load_dotenv()
+#load_dotenv()
 
 # Cached file parsing
 @st.cache_data(show_spinner=False)
@@ -70,7 +70,7 @@ ss.setdefault("module_sig", "")
 ss.setdefault("los", [])
 ss.setdefault("questions", {})
 ss.setdefault("questions_sig", None)
-ss.setdefault("docx_file", None)
+ss.setdefault("docx_file", "")
 
 ss.setdefault("MOCK_MODE", True)
 ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
@@ -82,7 +82,7 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 # Banner based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f":mortar_board: IMF LearnAI{mock_warning if ss['MOCK_MODE'] else ''}")
-st.write("_The AI support you need to create effective course outlines, learning objectives, and assessment questions_")
+st.markdown("##### _Your AI partner for smarter course design._")
 
 # --------------------------------------------------------------
 # Helpers for clearing derived state
@@ -173,7 +173,7 @@ Plan your course structure
 """
     upload = """
 **📂 2. Upload**  
-Add your course material files
+Add your module files
 """
     LOs = """
 **🎯 3. Objectives**  
@@ -210,7 +210,7 @@ Export questions to Microsoft Word
     # crisp separation from the rest of the page
     st.divider()
     # small bottom breathing room
-    st.write("")
+    #st.write("")
 
 ################################################
 # 1 Course Outline
@@ -222,15 +222,15 @@ def render_step_1():
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
 """)
     with st.expander("**Structure of an IMF course**", expanded=False):
-        cols = st.columns([1, 1], gap="medium")
+        cols = st.columns([3, 1], gap="medium")
         with cols[0]:
             st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
         with cols[1]:
             #st.image(const.COURSE_STRUCTURE_IMAGE, use_container_width=True)
-            st.markdown("**COOL VISUAL OF COURSE STRUCTURE WITH LEARNING OBJECTIVES HERE**")
+            st.image(const.COURSE_STRUCTURE_VISUAL, use_container_width=True)
     
     # --- User Inputs ---
-    course_title = st.text_input("Enter the Course Title", "Public Debt Sustainability Analysis")
+    st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
     files = st.file_uploader(
         "Upload Source Materials (e.g., papers, presentations, notes)",
         type=["pdf","docx","pptx","txt"],
@@ -268,9 +268,16 @@ Investing time upfront in the outline will make the presentation of content more
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
-    st.caption(f"Estimated tokens: {ss.get("course_tokens", 0):,}")
+    st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
         st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+    
+    # Title and instructor guidance for the AI
+    st.markdown("#### Enter your course title and any guidance for the AI to consider when generating the outline.")
+    course_title = st.text_input("Course Title", "Public Debt Sustainability Analysis" if ss["MOCK_MODE"] else "", max_chars=60)
+    outline_guidance = st.text_area("Additional Guidance for AI (optional)",
+                                    "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies." if ss["MOCK_MODE"] else "",
+                                    height=80, max_chars=300, help="blabla")
 
     # --- Generate Outline ---
     is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
@@ -278,21 +285,20 @@ Investing time upfront in the outline will make the presentation of content more
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             ss['generated_outline'] = generate_outline(course_title.strip(), ss["course_text"])
 
-    def display_outline(outline_json):
+    def display_outline(outline: Dict[str, Any]):
         """
         Parses the JSON outline and displays it in a user-friendly format.
+        LLM output was laready converted to Python dict in generate_outline().
         """
-        from app.utils import parse_json_strict
-        data = parse_json_strict(outline_json)
-        st.header(f"Course Outline: {data.get('courseTitle', 'N/A')}")
+        st.header(f"Course Outline: {outline.get('courseTitle', 'N/A')}")
 
         st.subheader("Course-Level Objectives")
-        for obj in data.get("courseLevelObjectives", []):
+        for obj in outline.get("courseLevelObjectives", []):
             st.markdown(f"- {obj}")
 
         st.markdown("---")
 
-        for i, module in enumerate(data.get("modules", [])):
+        for i, module in enumerate(outline.get("modules", [])):
             with st.expander(f"**Module {i+1}: {module.get('moduleTitle', 'N/A')}**", expanded=True):
                 st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
                 st.info(f"**Estimated Learning Time:** {module.get('estimatedLearningTime', 'N/A')}")
@@ -340,8 +346,8 @@ Investing time upfront in the outline will make the presentation of content more
         display_outline(ss['generated_outline'])
 
         # Display the raw JSON in an expander
-        with st.expander("Show Raw JSON Output"):
-            st.json(ss['generated_outline'])
+        # with st.expander("Show Raw JSON Output"):
+                #     st.json(ss['generated_outline'])
     
     # --- Navigation ---
     st.divider()
@@ -361,7 +367,7 @@ def render_step_2():
         "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
-        key=f"module_file_uploader_{ss["uploader_key"]}",
+        key=f"module_file_uploader_{ss['uploader_key']}",
         disabled=ss["MOCK_MODE"]
         ) or []
     # In mock mode, override with the mock file
@@ -388,7 +394,7 @@ def render_step_2():
         # Persist the latest parse
         ss["module_text"] = text
         ss["module_tokens"] = tokens
-        prev_mod_sig = ss.get("module_sig", "")
+        #prev_mod_sig = ss.get("module_sig", "")
         new_mod_sig = _sig_module(text)
         ss["module_sig"] = new_mod_sig
 
@@ -404,7 +410,7 @@ def render_step_2():
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
-    st.caption(f"Estimated tokens: {ss.get("module_tokens", 0):,}")
+    st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
         st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
     
@@ -587,7 +593,8 @@ def render_step_3():
             st.rerun()
     with cols[1]:
         def all_los_finalized():
-            if not ss.get("los"): return False
+            if not ss.get("los"):
+                return False
             return all(lo.get("final_text") for lo in ss["los"])
         if st.button("Next: Generate Questions →", disabled=not all_los_finalized()):
             ss["current_step"] = 4
@@ -633,7 +640,8 @@ def render_step_4():
     # Go over all LOs
     for lo in ss["los"]:
         qs=ss["questions"].get(lo["id"],[])
-        if not qs: continue
+        if not qs:
+            continue
         with st.container(border=True):
             st.subheader(f"{lo.get('final_text')}")
             for idx,q in enumerate(qs):
@@ -684,8 +692,8 @@ def render_step_4():
             ss["current_step"] = 3
             st.rerun()
     with cols[1]:
-        is_ready_for_step_4 = bool(ss.get("questions"))
-        if st.button("Next: Export →", disabled=not is_ready_for_step_4):
+        is_ready_for_step_5 = bool(ss.get("questions"))
+        if st.button("Next: Export →", disabled=not is_ready_for_step_5):
             ss["current_step"] = 5
             st.rerun()
     
@@ -695,18 +703,68 @@ def render_step_4():
 def render_step_5():
 
     st.header("📄 Export to Word")
-    build_disabled = not ss.get("questions")
-    if st.button("Build DOCX file", disabled=build_disabled):
-        ss["docx_file"] = build_docx(ss["los"], ss["questions"])
-    if ss.get("docx_file"):
+    #build_disabled = not ss.get("questions")
+    # Export selection: allow user to choose which metadata blocks to include
+    st.markdown("#### What would you like to include with the questions?")
+    cols = st.columns([1,1])
+    with cols[0]:
+        inc_los = st.checkbox("Learning objectives", value=True,
+                              help="Include the learning objective text before its questions")
+        inc_bloom = st.checkbox("Bloom levels", value=True,
+                                help="Show intended Bloom level for each LO")
+        inc_rationale = st.checkbox("Rationale for Bloom level", value=True,
+                                    help="Include rationale explaining the Bloom level")
+    with cols[1]:
+        inc_answer = st.checkbox("Answer", value=True,
+                                 help="Show the correct answer option")
+        inc_feedback = st.checkbox("Feedback", value=True,
+                                   help="Include feedback / rationale for each option")
+        inc_content = st.checkbox("Content reference", value=True,
+                                  help="Include content reference for each question")
+
+# ###
+#     for i, lo in enumerate(list(ss["los"])):
+#         lo_text_key = f"lo_text_{lo['id']}"
+#         lo_level_key = f"lo_level_{lo['id']}"
+#         prev_text = lo.get("text", "")
+#         prev_level = lo.get("intended_level", "Remember")
+#         is_final = bool(lo.get("final_text"))
+
+#         # Seed widget state only once, on creation
+#         if lo_text_key not in ss:
+#             ss[lo_text_key] = prev_text
+#         if lo_level_key not in ss:
+#             ss[lo_level_key] = prev_level
+
+# ###
+
+
+    include_opts = {
+        "los": inc_los,
+        "bloom": inc_bloom,
+        "answer": inc_answer,
+        "feedback": inc_feedback,
+        "content": inc_content,
+        "rationale": inc_rationale,
+    }
+
+    st.markdown("")
+    cols = st.columns([1,1])
+    with cols[0]:
+        if st.button("Build DOCX file"):
+            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=include_opts)
+            ss['prev_build_inc_opts'] = include_opts
+    with cols[1]:
+#        if ss.get("docx_file"):
         st.download_button(
             "Download",
             data=ss["docx_file"],
             file_name="assessment_questions.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="download_docx_btn"
-        )        
-   
+            key="download_docx_btn",
+            disabled = not ss.get("docx_file") or ss['prev_build_inc_opts'] != include_opts,
+            )        
+    
     # --- Navigation ---
     st.divider()
     cols = st.columns([1, 1])

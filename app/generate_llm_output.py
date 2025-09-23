@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
 from . import prompts
-from .utils import parse_json_strict, validate_alignment_payload, validate_questions_payload
+from .parse_llm_output import parse_json_strict, validate_alignment_payload, validate_questions_payload
 from . import constants as const
 
 # Load OPENAI_API_KEY from .env
@@ -47,6 +47,15 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
     except Exception as e:
         raise Exception(f"API call failed: {e}")
 
+
+def generate_outline(course_title:str, source_material:str)->Dict[str,Any]:
+    if MOCK_MODE:
+        return const.generate_mock_llm_response(course_title)
+    user_prompt=prompts.build_outline_user_prompt(course_title, source_material)
+    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
+    return obj
+
+
 def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:
     if MOCK_MODE:
         # Return a randomized mock scenario to exercise UI branches
@@ -62,10 +71,3 @@ def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_qu
     user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
     obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
     return validate_questions_payload(obj)
-
-def generate_outline(course_title:str, source_material:str)->Dict[str,Any]:
-    if MOCK_MODE:
-        return const.generate_mock_llm_response(course_title)
-    user_prompt=prompts.build_outline_user_prompt(course_title, source_material)
-    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
-    return obj

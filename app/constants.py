@@ -1,7 +1,5 @@
 import io
 import random
-import json
-import time
 import unittest.mock as mock
 from datetime import datetime
 from typing import Dict, Any
@@ -24,6 +22,8 @@ A course may have multiple **modules**.
 - **Units:** Multiple per section, each with a single granular learning objective
 - **Balance of modalities:** Mix text, graphics, video, activities, etc.
 """
+
+COURSE_STRUCTURE_VISUAL = "assets/course_structure.png"
 
 # Bloom levels and definitions
 BLOOM_DEF = """
@@ -173,7 +173,7 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
     # Simulate API call latency
     #time.sleep(5)
 
-    # A detailed mock response that follows the specified JSON schema.
+    # A detailed mock response in Dict that follows the specified JSON schema.
     mock_json = {
       "courseTitle": course_title,
       "courseLevelObjectives": [
@@ -284,4 +284,4 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
         }
       ]
     }
-    return json.dumps(mock_json, indent=2)
+    return mock_json

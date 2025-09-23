@@ -21,9 +21,11 @@ def validate_questions_payload(obj:Dict[str,Any])->Dict[str,Any]:
     if not isinstance(qs,list) or not qs:
         raise ValueError("questions missing")
     for q in qs:
-        if q.get("type")!="MCQ_4": raise ValueError("type must be MCQ_4")
+        if q.get("type")!="MCQ_4":
+            raise ValueError("type must be MCQ_4")
         opts=q.get("options",[])
-        if len(opts)!=4: raise ValueError("need 4 options")
+        if len(opts)!=4:
+            raise ValueError("need 4 options")
         ids=sorted(o.get("id") for o in opts)
         if ids!=["A","B","C","D"]:
             raise ValueError("option ids must be A-D")

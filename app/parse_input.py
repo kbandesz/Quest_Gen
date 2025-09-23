@@ -1,4 +1,5 @@
-import io, re
+import io
+import re
 from typing import Tuple, List, Union
 from pypdf import PdfReader
 import mammoth  # for docx to text
@@ -80,7 +81,7 @@ def _extract_single(uploaded_file) -> str:
             return _normalize(_read_txt(uploaded_file))
         else:
             raise ValueError("Unsupported file type: {uploaded_file.name}")
-    except Exception as e:
+    except Exception:
         raise ValueError(f"Failed to parse '{uploaded_file.name}': The file may be corrupted, password-protected, or in an unsupported format.")
 
 def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, int]:
