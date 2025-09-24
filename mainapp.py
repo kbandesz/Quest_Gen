@@ -1,16 +1,12 @@
 import streamlit as st
 import uuid
 from typing import Dict, Any, Optional
-#from dotenv import load_dotenv
 import hashlib
 
 from app.parse_input import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
 from app.export import build_questions_docx
 import app.constants as const
-
-# Load environment variables (OpenAI API key) from .env
-#load_dotenv()
 
 # Cached file parsing
 @st.cache_data(show_spinner=False)
@@ -62,14 +58,23 @@ st.set_page_config(page_title="IMF LearnAI", page_icon=":mortar_board:", layout=
 ss = st.session_state
 ss.setdefault("current_step", 1)
 ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
+
+ss.setdefault("course_files", [])
+ss.setdefault("course_text", "")
+ss.setdefault("course_tokens", 0)
+
 ss.setdefault("module_files", [])
 ss.setdefault("processed_file_keys", None)
 ss.setdefault("module_text", "")
 ss.setdefault("module_tokens", 0)
 ss.setdefault("module_sig", "")
+
 ss.setdefault("los", [])
 ss.setdefault("questions", {})
 ss.setdefault("questions_sig", None)
+
+ss.setdefault("include_opts", {})
+ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
 ss.setdefault("docx_file", "")
 
 ss.setdefault("MOCK_MODE", True)
@@ -116,6 +121,7 @@ def reset_uploaded_content() -> None:
     ss["course_files"] = []
     ss["module_files"] = []
     ss["processed_file_keys"] = None
+    ss["course_title"] = ""
     ss["course_text"] = ""
     ss["course_tokens"] = 0
     ss["module_text"] = ""
@@ -140,6 +146,7 @@ with st.sidebar:
 
         # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
+            ss.pop("course_title_key", None)
             ss.pop("generated_outline", None)
             clear_module_dependent_outputs()
             reset_uploaded_content()
@@ -274,7 +281,12 @@ Investing time upfront in the outline will make the presentation of content more
     
     # Title and instructor guidance for the AI
     st.markdown("#### Enter your course title and any guidance for the AI to consider when generating the outline.")
-    course_title = st.text_input("Course Title", "Public Debt Sustainability Analysis" if ss["MOCK_MODE"] else "", max_chars=60)
+
+    if "course_title_key" not in ss:
+        ss["course_title_key"] = "Public Debt Sustainability Analysis" if ss["MOCK_MODE"] else ss.get("course_title","")
+    ss["course_title"] = st.text_input("Course Title", key="course_title_key", max_chars=60)
+    
+    
     outline_guidance = st.text_area("Additional Guidance for AI (optional)",
                                     "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies." if ss["MOCK_MODE"] else "",
                                     height=80, max_chars=300, help="blabla")
@@ -283,7 +295,7 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
-            ss['generated_outline'] = generate_outline(course_title.strip(), ss["course_text"])
+            ss['generated_outline'] = generate_outline(ss["course_title"].strip(), ss["course_text"])
 
     def display_outline(outline: Dict[str, Any]):
         """
@@ -703,44 +715,35 @@ def render_step_4():
 def render_step_5():
 
     st.header("📄 Export to Word")
-    #build_disabled = not ss.get("questions")
+    st.markdown("")
+
     # Export selection: allow user to choose which metadata blocks to include
-    st.markdown("#### What would you like to include with the questions?")
+    st.markdown("##### Metadata to be included with questions:")
+
+    # Seed checkbox states only once, on widget creation
+    for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
+        key = f"exp_inc_{block}"
+        if key not in ss:
+            ss[key] = ss['include_opts'].get(block, True)
+
     cols = st.columns([1,1])
     with cols[0]:
-        inc_los = st.checkbox("Learning objectives", value=True,
-                              help="Include the learning objective text before its questions")
-        inc_bloom = st.checkbox("Bloom levels", value=True,
-                                help="Show intended Bloom level for each LO")
-        inc_rationale = st.checkbox("Rationale for Bloom level", value=True,
+        inc_lo = st.checkbox("Learning objectives", key="exp_inc_lo",
+                              help="Include the learning objective before its questions")
+        inc_bloom = st.checkbox("Bloom levels", key="exp_inc_bloom",
+                                help="Show Bloom level for each LO")
+        inc_rationale = st.checkbox("Rationale for Bloom level", key="exp_inc_rationale",
                                     help="Include rationale explaining the Bloom level")
     with cols[1]:
-        inc_answer = st.checkbox("Answer", value=True,
+        inc_answer = st.checkbox("Answer", key="exp_inc_answer",
                                  help="Show the correct answer option")
-        inc_feedback = st.checkbox("Feedback", value=True,
+        inc_feedback = st.checkbox("Feedback", key="exp_inc_feedback",
                                    help="Include feedback / rationale for each option")
-        inc_content = st.checkbox("Content reference", value=True,
-                                  help="Include content reference for each question")
-
-# ###
-#     for i, lo in enumerate(list(ss["los"])):
-#         lo_text_key = f"lo_text_{lo['id']}"
-#         lo_level_key = f"lo_level_{lo['id']}"
-#         prev_text = lo.get("text", "")
-#         prev_level = lo.get("intended_level", "Remember")
-#         is_final = bool(lo.get("final_text"))
-
-#         # Seed widget state only once, on creation
-#         if lo_text_key not in ss:
-#             ss[lo_text_key] = prev_text
-#         if lo_level_key not in ss:
-#             ss[lo_level_key] = prev_level
-
-# ###
-
-
-    include_opts = {
-        "los": inc_los,
+        inc_content = st.checkbox("Content reference", key="exp_inc_content",
+                                  help="Include reference to module content for each question")
+    # Persist current selection
+    ss['include_opts'] = {
+        "lo": inc_lo,
         "bloom": inc_bloom,
         "answer": inc_answer,
         "feedback": inc_feedback,
@@ -752,17 +755,19 @@ def render_step_5():
     cols = st.columns([1,1])
     with cols[0]:
         if st.button("Build DOCX file"):
-            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=include_opts)
-            ss['prev_build_inc_opts'] = include_opts
+            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss["include_opts"])
+            ss["prev_build_inc_opts"] = ss["include_opts"]
     with cols[1]:
-#        if ss.get("docx_file"):
+        no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss["include_opts"]
+        help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
         st.download_button(
             "Download",
             data=ss["docx_file"],
             file_name="assessment_questions.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key="download_docx_btn",
-            disabled = not ss.get("docx_file") or ss['prev_build_inc_opts'] != include_opts,
+            disabled = no_docx_for_selection,
+            help=help_string if no_docx_for_selection else ""
             )        
     
     # --- Navigation ---

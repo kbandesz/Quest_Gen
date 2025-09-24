@@ -1,14 +1,12 @@
 # Generate AI responses (including mocks)
 import os
-from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict, Any
+
 from . import prompts
 from .parse_llm_output import parse_json_strict, validate_alignment_payload, validate_questions_payload
 from . import constants as const
 
-# Load OPENAI_API_KEY from .env
-load_dotenv() 
 
 MOCK_MODE = True
 OPENAI_MODEL = "gpt-4.1-nano"
