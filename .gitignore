@@ -1,9 +1,17 @@
-# Ignore the local virtual environment files
+# Local virtual environment files
 .venv/
 
-# Ignore local cache files
+# Local development environment file
+.env
+
+# Streamlit specific files
+.streamlit/
+
+# Codespace and vs code settings
+.vscode/
+.devcontainer/
+
+# Local Python cache files
 __pycache__/
 app/__pycache__/
 
-# Ignore local development environment file
-.env
