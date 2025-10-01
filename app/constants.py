@@ -164,7 +164,7 @@ def generate_mock_questions(n:int=2)->Dict[str,Any]:
     return {"questions":qs}
 
 # Mock course outline
-def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
+def generate_mock_llm_response()->Dict[str,Any]:
     """
     Simulates a call to a Large Language Model.
     Returns a pre-defined, structured JSON response for demonstration.
@@ -175,7 +175,7 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
 
     # A detailed mock response in Dict that follows the specified JSON schema.
     mock_json = {
-      "courseTitle": course_title,
+      "courseTitle": "Public Debt Sustainability",
       "courseLevelObjectives": [
         "Analyze the key drivers of public debt vulnerabilities using a structured framework.",
         "Evaluate the effectiveness of fiscal adjustment strategies in stabilizing debt dynamics.",
@@ -186,7 +186,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
         {
           "moduleTitle": "Foundations of Public Debt Sustainability",
           "overview": "This module introduces the core concepts of public debt sustainability. Learners will explore the main components of the debt dynamic equation and understand how fiscal policy, economic growth, and interest rates interact to determine a country's debt trajectory.",
-          "estimatedLearningTime": "2-3 hours",
           "sections": [
             {
               "sectionTitle": "Introduction to Public Debt",
@@ -201,7 +200,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                     "Definition of public sector debt.",
                     "Common measures and metrics (e.g., Debt-to-GDP ratio)."
                   ],
-                  "suggestedFormat": "Text"
                 },
                 {
                   "unitTitle": "The Government Budget Constraint",
@@ -210,7 +208,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                     "Understanding the flow of government revenue and expenditure.",
                     "How deficits lead to debt accumulation."
                   ],
-                  "suggestedFormat": "Video"
                 }
               ]
             },
@@ -226,7 +223,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                   "keyPoints": [
                     "Identifying key variables: primary balance, interest rate, growth rate."
                   ],
-                  "suggestedFormat": "Interactive"
                 },
                 {
                   "unitTitle": "Debt-Stabilizing Primary Balance",
@@ -234,7 +230,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                   "keyPoints": [
                     "Calculating the primary balance needed to keep the debt ratio constant."
                   ],
-                  "suggestedFormat": "Graphic"
                 }
               ]
             },
@@ -250,7 +245,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                   "keyPoints": [
                     "The government's long-run ability to service its debt."
                   ],
-                  "suggestedFormat": "Text"
                 },
                 {
                   "unitTitle": "Defining Sustainability",
@@ -259,7 +253,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                     "Maintaining a stable, non-explosive debt path without major policy shifts.",
                     "[NOTE: This topic was not found in the source material but is included for pedagogical completeness.]"
                   ],
-                  "suggestedFormat": "PDF"
                 }
               ]
             },
@@ -276,7 +269,6 @@ def generate_mock_llm_response(course_title:str)->Dict[str,Any]:
                     "Recap of the debt dynamics equation.",
                     "Importance of the interest rate-growth differential."
                   ],
-                  "suggestedFormat": "Text"
                 }
               ]
             }

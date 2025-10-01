@@ -3,9 +3,10 @@ import uuid
 from typing import Dict, Any, Optional
 import hashlib
 
-from app.parse_input import extract_text_and_tokens
+from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
-from app.export import build_questions_docx
+from app.export_docx import build_questions_docx
+from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 
 # Cached file parsing
@@ -45,14 +46,18 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
             for opt in sorted(q.get('options', []), key=lambda o: o.get('id','')):
                 parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|txt:{opt.get('text','')}")
                 parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|rat:{opt.get('option_rationale','')}")
-    blob = "\n".join(parts)
-    return hashlib.sha1(blob.encode("utf-8")).hexdigest()
+    payload = "\n".join(parts)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
 ################################################
 # App setup
 ################################################
+# Page config
 st.set_page_config(page_title="IMF LearnAI", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+
+# Apply any pending restore from saved session state
+apply_pending_restore()
 
 # Initialize session state
 ss = st.session_state
@@ -62,9 +67,10 @@ ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
 ss.setdefault("course_files", [])
 ss.setdefault("course_text", "")
 ss.setdefault("course_tokens", 0)
+ss.setdefault("outline_guidance", "")
 
 ss.setdefault("module_files", [])
-ss.setdefault("processed_file_keys", None)
+#ss.setdefault("processed_file_keys", None)
 ss.setdefault("module_text", "")
 ss.setdefault("module_tokens", 0)
 ss.setdefault("module_sig", "")
@@ -84,7 +90,7 @@ ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 # Apply runtime config to generation module on each rerun (current values)
 set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
-# Banner based on current mock setting
+# Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f":mortar_board: IMF LearnAI{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _Your AI partner for smarter course design._")
@@ -107,12 +113,20 @@ def clear_questions(lo_id: Optional[str] = None) -> None:
         ss["questions"].pop(lo_id, None)
     else:
         ss["questions"].clear()
-    ss.pop("docx_file", None)
-    ss.pop("questions_sig", None)
+        ss.pop("questions_sig", None)
+
+    # Clear selections and generated file for question export
+    # for block_to_export in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
+    #     key = f"exp_inc_{block_to_export}"
+    #     ss.pop(key, None)
+    ss.pop("docx_file", "")
+    ss["include_opts"].clear()
+    ss["prev_build_inc_opts"].clear()
 
 
 def clear_module_dependent_outputs() -> None:
     """Clear all outputs that depend on uploaded module content."""
+    ss["__last_clear_reason__"] = "module_sig_changed"
     ss["los"].clear()
     clear_questions()
 
@@ -120,8 +134,8 @@ def reset_uploaded_content() -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []
-    ss["processed_file_keys"] = None
-    ss["course_title"] = ""
+    #ss["processed_file_keys"] = None
+    ss["outline_guidance"] = ""
     ss["course_text"] = ""
     ss["course_tokens"] = 0
     ss["module_text"] = ""
@@ -146,7 +160,6 @@ with st.sidebar:
 
         # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
-            ss.pop("course_title_key", None)
             ss.pop("generated_outline", None)
             clear_module_dependent_outputs()
             reset_uploaded_content()
@@ -160,11 +173,15 @@ with st.sidebar:
             st.toast("Model changed — cleared all LLM output.")
         ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
 
+    # Change mock mode and model
     st.markdown("### Runtime Settings")
 
     st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_settings_change)
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL", on_change=_on_settings_change)
+
+    # Save/load progress
+    save_load_panel()
 
 
 ################################################
@@ -255,7 +272,8 @@ Investing time upfront in the outline will make the presentation of content more
 
     # Process files
     if files:
-        ss["course_files"] = files
+        #ss["course_files"] = files
+        ss["course_files"] = [f.name for f in files]
         try:
             text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
         except Exception as e:
@@ -271,7 +289,8 @@ Investing time upfront in the outline will make the presentation of content more
     # Display currently uploaded files
     if ss["course_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["course_files"])])
+        #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["course_files"])])
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
@@ -279,28 +298,28 @@ Investing time upfront in the outline will make the presentation of content more
     with st.expander("Preview first 5,000 characters", expanded=False):
         st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
     
-    # Title and instructor guidance for the AI
-    st.markdown("#### Enter your course title and any guidance for the AI to consider when generating the outline.")
-
-    if "course_title_key" not in ss:
-        ss["course_title_key"] = "Public Debt Sustainability Analysis" if ss["MOCK_MODE"] else ss.get("course_title","")
-    ss["course_title"] = st.text_input("Course Title", key="course_title_key", max_chars=60)
+    # Additional instructor guidance for the AI
+    st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
+    #  In mock mode, pre-fill with example
+    if ss["MOCK_MODE"]:
+        ss["outline_guidance"] = "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies."
     
-    
-    outline_guidance = st.text_area("Additional Guidance for AI (optional)",
-                                    "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies." if ss["MOCK_MODE"] else "",
-                                    height=80, max_chars=300, help="blabla")
+    if "outline_guidance_key" not in ss:
+        ss["outline_guidance_key"] = ss["outline_guidance"]
+    ss["outline_guidance"] = st.text_area("Additional Guidance for AI (optional)",
+                                    key="outline_guidance_key",
+                                    height=80, max_chars=300, help="blabla", disabled=ss["MOCK_MODE"])
 
     # --- Generate Outline ---
     is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
-            ss['generated_outline'] = generate_outline(ss["course_title"].strip(), ss["course_text"])
+            ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
 
     def display_outline(outline: Dict[str, Any]):
         """
         Parses the JSON outline and displays it in a user-friendly format.
-        LLM output was laready converted to Python dict in generate_outline().
+        LLM output was already converted to Python dict in generate_outline().
         """
         st.header(f"Course Outline: {outline.get('courseTitle', 'N/A')}")
 
@@ -313,7 +332,6 @@ Investing time upfront in the outline will make the presentation of content more
         for i, module in enumerate(outline.get("modules", [])):
             with st.expander(f"**Module {i+1}: {module.get('moduleTitle', 'N/A')}**", expanded=True):
                 st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
-                st.info(f"**Estimated Learning Time:** {module.get('estimatedLearningTime', 'N/A')}")
                 
                 # Dynamically collect section objectives to display at the module level
                 module_objectives = []
@@ -339,15 +357,10 @@ Investing time upfront in the outline will make the presentation of content more
                         unit_obj = unit.get("unitLevelObjective", {})
                         st.markdown(f"> _**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
 
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown("**Key Points:**")
-                            for point in unit.get("keyPoints", []):
-                                st.markdown(f"  - {point}")
-                        with col2:
-                            st.markdown("**Suggested Format:**")
-                            st.success(f"{unit.get('suggestedFormat', 'N/A')}")
-                        st.markdown("") 
+                        st.markdown("**Key Points:**")
+                        for point in unit.get("keyPoints", []):
+                            st.markdown(f"  - {point}")
+                    st.markdown("") 
 
 
     # --- Display Output ---
@@ -387,38 +400,73 @@ def render_step_2():
         files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
 
     # Compute a stable signature for the current files (for cache keying)
-    current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
+    #current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
 
 
     # Process files if they have actually changed.
-    if files and current_file_keys != ss["processed_file_keys"]:
-        if ss["processed_file_keys"] is not None:
-            st.toast("Module content changed — LOs and questions cleared.")
-        clear_module_dependent_outputs()
-        ss["processed_file_keys"] = current_file_keys
-        ss["module_files"] = files
+    # if files and current_file_keys != ss["processed_file_keys"]:
+    #     if ss["processed_file_keys"] is not None:
+    #         st.toast("Module content changed — LOs and questions cleared.")
+    #     clear_module_dependent_outputs()
+    #     ss["processed_file_keys"] = current_file_keys
+    #     #ss["module_files"] = files
+    #     ss["module_files"] = [f.name for f in files]
+    #     try:
+    #         text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
+    #     except Exception as e:
+    #         st.error(e)
+    #         text, tokens = "", 0
+
+    #     # Persist the latest parse
+    #     ss["module_text"] = text
+    #     ss["module_tokens"] = tokens
+    #     #prev_mod_sig = ss.get("module_sig", "")
+    #     new_mod_sig = _sig_module(text)
+    #     ss["module_sig"] = new_mod_sig
+
+    #     if ss["module_tokens"] > const.MODULE_TOKEN_LIMIT:
+    #         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+
+############ NEW
+# --- Process files based on actual content, not metadata ---
+    if files:
+        # Build cache key for current files
+        current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+
+        # Call the cached extractor
         try:
             text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
         except Exception as e:
             st.error(e)
             text, tokens = "", 0
 
-        # Persist the latest parse
+        new_mod_sig = _sig_module(text or "")
+
+        # Only clear when content actually changed
+        if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
+            st.toast("Module content changed — LOs and questions cleared.")
+            clear_module_dependent_outputs()
+            st.caption(f"old sig: {ss['module_sig'][:8]}… → new: {new_mod_sig[:8]}…")
+
+        # Persist the latest parse & signature
+        #ss["processed_file_keys"] = current_file_keys     # keep if you like, but no longer used to clear
+        ss["module_files"] = [f.name for f in files]
         ss["module_text"] = text
         ss["module_tokens"] = tokens
-        #prev_mod_sig = ss.get("module_sig", "")
-        new_mod_sig = _sig_module(text)
         ss["module_sig"] = new_mod_sig
 
         if ss["module_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
-        # elif ss.get("los"):
-        #     st.info("Module content changed — LOs and questions cleared.")
+
+
+##############
+
 
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["module_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["module_files"])])
+        #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["module_files"])])
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
@@ -476,6 +524,7 @@ def render_step_3():
         lo_level_key = f"lo_level_{lo['id']}"
         prev_text = lo.get("text", "")
         prev_level = lo.get("intended_level", "Remember")
+
         is_final = bool(lo.get("final_text"))
 
         # Seed widget state only once, on creation
@@ -507,7 +556,7 @@ def render_step_3():
             ta = st.text_area(f"**Objective #{i+1}**", key=lo_text_key, disabled=is_final,
                              label_visibility="visible", height=80, max_chars=170,
                              help="Edit your learning objective here.")
-            lo["text"] = ss[lo_text_key]
+            lo["text"] = ta
             has_avoid_verb = any(verb.lower() in ta.lower() for verb in const.LO_WRITING_TIPS["avoid_verbs"])
             if has_avoid_verb:
                 st.warning(f"⚠️ Avoid vague verbs like {', '.join(const.LO_WRITING_TIPS['avoid_verbs'])}. See tips above.")
@@ -515,22 +564,21 @@ def render_step_3():
             # --- Bloom level selector ---
             sel = st.selectbox("Intended Bloom level", const.BLOOM_LEVEL_DEFS.keys(), key=lo_level_key, disabled=is_final,
                                help="Select the intended Bloom's taxonomy level.",
-                               index=list(const.BLOOM_LEVEL_DEFS.keys()).index(ss[lo_level_key]),
                                label_visibility="visible")
-            lo["intended_level"] = ss[lo_level_key]
+            lo["intended_level"] = sel
             st.info(f"**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}", icon="ℹ️")
             
 
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
-                if st.button("Alignment Check", key=f"align_{lo['id']}", disabled=is_final, help="Have another pair of AI eyes check your LO."):
+                if st.button("Alignment Check", key=f"align_{lo['id']}_btn", disabled=is_final, help="Have another pair of AI eyes check your LO."):
                     with st.spinner("Checking alignment..."):
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                         lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
-                if st.button("Accept as final", key=f"accept_{lo['id']}", disabled=is_final):
+                if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
                     lo["final_text"] = lo["text"]
                     # Invalidate questions if needed
                     current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
@@ -541,11 +589,11 @@ def render_step_3():
                     st.rerun()
             with btn_cols[2]:
                 if is_final:
-                    if st.button("Re-open", key=f"unfinal_{lo['id']}"):
+                    if st.button("Re-open", key=f"unfinal_{lo['id']}_btn"):
                         lo["final_text"] = None
                         st.rerun()
             with btn_cols[3]:
-                if st.button(":x: Delete", key=f"del_{lo['id']}"):
+                if st.button(":x: Delete", key=f"del_{lo['id']}_btn"):
                     ss.pop(lo_text_key, None)
                     ss.pop(lo_level_key, None)
                     ss["los"].remove(lo)
@@ -563,7 +611,7 @@ def render_step_3():
                     st.markdown(f"**Suggested re-write:**\n> {lo['alignment']['suggested_lo']}")
 
     # --- Add-new button at the bottom ---
-    if st.button("➕ Add Learning Objective", key="add_lo_bottom"):
+    if st.button("➕ Add Learning Objective"):
         ss["los"].append({
             "id": str(uuid.uuid4()),
             "text": "",
@@ -578,14 +626,14 @@ def render_step_3():
     # --- Check All / Accept All buttons ---
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
-        if st.button("Check All", key="check_all", disabled=not ss["los"]):
+        if st.button("Check All", disabled=not ss["los"]):
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                     lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
-        if st.button("Accept All", key="accept_all", disabled=not ss["los"]):
+        if st.button("Accept All", disabled=not ss["los"]):
             for lo in ss["los"]:
                 lo["final_text"] = lo["text"]
                 # Invalidate questions if needed
@@ -630,6 +678,8 @@ def render_step_4():
     )
     if st.button("Generate", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
+            # Clear all existing questions (if any)
+            clear_questions()
             # Go over all LOs and generate questions
             for lo in ss["los"]:
                 payload =   generate_questions(
@@ -647,7 +697,7 @@ def render_step_4():
                 )
             # After regeneration, update questions_sig and clear stale DOCX
             ss["questions_sig"] = _sig_questions(ss["questions"])
-            ss.pop("docx_file", None)
+            #ss.pop("docx_file", None)
     
     # Go over all LOs
     for lo in ss["los"]:
@@ -693,7 +743,7 @@ def render_step_4():
     new_q_sig = _sig_questions(ss.get("questions", {}))
     if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
         # User changed questions → previously built DOCX is now stale
-        ss["docx_file"] = None
+        ss["docx_file"] = "" #None
     ss["questions_sig"] = new_q_sig
 
     # --- Navigation ---
@@ -723,6 +773,10 @@ def render_step_5():
     # Seed checkbox states only once, on widget creation
     for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
         key = f"exp_inc_{block}"
+        # st.write(key)
+        # st.write(key in ss)
+        # st.write(ss[key])
+        # st.write(ss['include_opts'].get(block, True))
         if key not in ss:
             ss[key] = ss['include_opts'].get(block, True)
 
@@ -755,17 +809,16 @@ def render_step_5():
     cols = st.columns([1,1])
     with cols[0]:
         if st.button("Build DOCX file"):
-            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss["include_opts"])
-            ss["prev_build_inc_opts"] = ss["include_opts"]
+            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
+            ss["prev_build_inc_opts"] = ss['include_opts']
     with cols[1]:
-        no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss["include_opts"]
+        no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
         help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
         st.download_button(
             "Download",
-            data=ss["docx_file"],
+            data=ss.get("docx_file", ""),
             file_name="assessment_questions.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="download_docx_btn",
             disabled = no_docx_for_selection,
             help=help_string if no_docx_for_selection else ""
             )        

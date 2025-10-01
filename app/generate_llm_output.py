@@ -46,10 +46,10 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
         raise Exception(f"API call failed: {e}")
 
 
-def generate_outline(course_title:str, source_material:str)->Dict[str,Any]:
+def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
     if MOCK_MODE:
-        return const.generate_mock_llm_response(course_title)
-    user_prompt=prompts.build_outline_user_prompt(course_title, source_material)
+        return const.generate_mock_llm_response()
+    user_prompt=prompts.build_outline_user_prompt(outline_guidance, source_material)
     obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
     return obj
 
