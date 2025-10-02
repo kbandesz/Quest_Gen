@@ -311,7 +311,8 @@ Investing time upfront in the outline will make the presentation of content more
                                     height=80, max_chars=300, help="blabla", disabled=ss["MOCK_MODE"])
 
     # --- Generate Outline ---
-    is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+    #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+    is_ready = bool(ss.get("course_text"))
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
@@ -399,35 +400,6 @@ def render_step_2():
     if ss["MOCK_MODE"]:
         files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
 
-    # Compute a stable signature for the current files (for cache keying)
-    #current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
-
-
-    # Process files if they have actually changed.
-    # if files and current_file_keys != ss["processed_file_keys"]:
-    #     if ss["processed_file_keys"] is not None:
-    #         st.toast("Module content changed — LOs and questions cleared.")
-    #     clear_module_dependent_outputs()
-    #     ss["processed_file_keys"] = current_file_keys
-    #     #ss["module_files"] = files
-    #     ss["module_files"] = [f.name for f in files]
-    #     try:
-    #         text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
-    #     except Exception as e:
-    #         st.error(e)
-    #         text, tokens = "", 0
-
-    #     # Persist the latest parse
-    #     ss["module_text"] = text
-    #     ss["module_tokens"] = tokens
-    #     #prev_mod_sig = ss.get("module_sig", "")
-    #     new_mod_sig = _sig_module(text)
-    #     ss["module_sig"] = new_mod_sig
-
-    #     if ss["module_tokens"] > const.MODULE_TOKEN_LIMIT:
-    #         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
-
-############ NEW
 # --- Process files based on actual content, not metadata ---
     if files:
         # Build cache key for current files
@@ -459,9 +431,6 @@ def render_step_2():
             st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
 
-##############
-
-
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["module_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
@@ -482,7 +451,8 @@ def render_step_2():
             ss["current_step"] = 1
             st.rerun()
     with cols[1]:
-        is_ready_for_step_3 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+        #is_ready_for_step_3 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+        is_ready_for_step_3 = bool(ss.get("module_text"))
         if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_3):
             ss["current_step"] = 3
             st.rerun()
