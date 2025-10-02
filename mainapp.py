@@ -54,7 +54,7 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
 # App setup
 ################################################
 # Page config
-st.set_page_config(page_title="IMF LearnAI", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="ALTO - Design", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
 
 # Apply any pending restore from saved session state
 apply_pending_restore()
@@ -92,8 +92,8 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f":mortar_board: IMF LearnAI{mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown("##### _Your AI partner for smarter course design._")
+st.title(f":mortar_board: ALTO - Design{mock_warning if ss['MOCK_MODE'] else ''}")
+st.markdown("##### _AI support for smarter course design._")
 
 # --------------------------------------------------------------
 # Helpers for clearing derived state
