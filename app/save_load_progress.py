@@ -94,17 +94,18 @@ def apply_pending_restore():
 def save_progress_ui():
     if "fname_key" not in ss:
         ss["fname_key"] = "saved_progress"
-    fname = st.text_input("File name", key="fname_key").strip()
+    with st.container(border=True):
+        fname = st.text_input("File name", key="fname_key").strip()
 
-    payload = json.dumps(exportable_state(), ensure_ascii=False, indent=2)
+        payload = json.dumps(exportable_state(), ensure_ascii=False, indent=2)
 
-    st.download_button(
-        "Save",
-        data=payload.encode("utf-8"),
-        file_name=f"{fname}.json",
-        mime="application/json",
-        disabled=not fname
-    )
+        st.download_button(
+            "Save",
+            data=payload.encode("utf-8"),
+            file_name=f"{fname}.json",
+            mime="application/json",
+            disabled=not fname
+        )
 
 def load_progress_ui():
     with st.form("load_form", clear_on_submit=True):
@@ -113,9 +114,7 @@ def load_progress_ui():
         if submitted and uploaded:
             try:
                 saved_state = json.load(uploaded)
-                saved_at = saved_state.get('saved_at','?')
                 ss["__PENDING_RESTORE__"] = saved_state
-                st.success(f"Progress saved at {saved_at} loaded. Applying…")
                 st.rerun()
             except Exception as e:
                 st.error(f"Could not load file: {e}")
@@ -124,10 +123,10 @@ def load_progress_ui():
 
 def save_load_panel():
     st.divider()
-    st.markdown("### 💾 Save your progress")
+    st.markdown("### 💾 Save session")
     save_progress_ui()
 
-    st.divider()
-    st.markdown("### 📤 Load saved session")
+    #st.divider()
+    st.markdown("### 📤 Load session")
     load_progress_ui()
 
