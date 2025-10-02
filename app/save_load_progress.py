@@ -65,9 +65,11 @@ def restore_state(saved_state: dict):
     if not isinstance(data, dict):
         raise ValueError("Invalid save file: missing 'state' payload")
 
-    # Clear any previously stored domain keys so we mirror the saved snapshot
-    for key in DOMAIN_STATE_KEYS:
-        ss.pop(key, None)
+    # Clear session state so we mirror the saved snapshot
+    #for key in DOMAIN_STATE_KEYS:
+    #    ss.pop(key, None)
+
+    ss.clear()
 
     for key in DOMAIN_STATE_KEYS:
         if key in data:
