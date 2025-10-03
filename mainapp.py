@@ -296,7 +296,8 @@ Investing time upfront in the outline will make the presentation of content more
     # Display token count & preview from session (stable across reruns)
     st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
-        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+        #st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
     st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
