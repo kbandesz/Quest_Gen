@@ -272,14 +272,14 @@ Investing time upfront in the outline will make the presentation of content more
 
     # Process files
     if files:
-        #ss["course_files"] = files
-        ss["course_files"] = [f.name for f in files]
-        try:
-            text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
-        except Exception as e:
-            st.error(e)
-            text, tokens = "", 0
+        with st.spinner("Extracting text. Please wait..."):
+            try:
+                text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
+            except Exception as e:
+                st.error(e)
+                text, tokens = "", 0
 
+        ss["course_files"] = [f.name for f in files]
         ss["course_text"] = text
         ss["course_tokens"] = tokens
 
@@ -419,7 +419,7 @@ def render_step_2():
         if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
             st.toast("Module content changed — LOs and questions cleared.")
             clear_module_dependent_outputs()
-            st.caption(f"old sig: {ss['module_sig'][:8]}… → new: {new_mod_sig[:8]}…")
+            #st.caption(f"old sig: {ss['module_sig'][:8]}… → new: {new_mod_sig[:8]}…")
 
         # Persist the latest parse & signature
         #ss["processed_file_keys"] = current_file_keys     # keep if you like, but no longer used to clear
@@ -442,7 +442,8 @@ def render_step_2():
     # Display token count & preview from session (stable across reruns)
     st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
-        st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
+        #st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
+        st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # --- Navigation ---
     st.divider()

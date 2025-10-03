@@ -17,7 +17,7 @@ You are an expert Instructional Designer tasked with creating a high-level outli
 - Deconstruct content into a logical sequence of modules progressing from foundational to advanced topics, each module requiring 2-3 hours of learning time.
 - For each module: define the title, provide an overview, and structure it into 3-5 sections.
 - For each section: define 1-2 encompassing learning objectives, and structure the section into 3-10 units.
-- For each unit: define 1 granular learning objective and provide key summary points. Flag any gaps as specified.
+- For each unit: define 1 granular learning objective and provide key summary points. Flag any gaps in source material as specified.
 
 # Input format
 ```
@@ -45,7 +45,7 @@ Generate a comprehensive course outline comprising:
 
 # Core Principles
 - Sequence topics from foundational to advanced for logical progression.
-- Flag missing topics with: [NOTE: This topic was not found in the source material but is included for pedagogical completeness.]
+- If a topic, concept, or point is pedagogically necessary but absent from the source material, flag it with the marker: [NOTE: Not covered in source material.].
 - Strictly follow all IMFx course-building standards below.
 - Strictly follow the user's additional instructions.
 
@@ -125,7 +125,7 @@ Return a single valid JSON object matching the schema defined below, using only 
   ]
 }
 ```
-Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics included but not found in source, insert this note: [NOTE: This topic was not found in the source material but is included for pedagogical completeness.]. Do not output any explanations or text outside the JSON schema.
+Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics/points included but not found in source, insert this note: [NOTE: Not covered in source material.]. Do not output any explanations or text outside the JSON schema.
 """
 
 def build_outline_user_prompt(outline_guidance: str, source_text: str) -> str:
