@@ -250,8 +250,7 @@ Investing time upfront in the outline will make the presentation of content more
         with cols[0]:
             st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
         with cols[1]:
-            #st.image(const.COURSE_STRUCTURE_IMAGE, use_container_width=True)
-            st.image(const.COURSE_STRUCTURE_VISUAL, use_container_width=True)
+            st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
     
     # --- User Inputs ---
     st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
@@ -323,47 +322,31 @@ Investing time upfront in the outline will make the presentation of content more
         Parses the JSON outline and displays it in a user-friendly format.
         LLM output was already converted to Python dict in generate_outline().
         """
-        st.header(f"Course Outline: {outline.get('courseTitle', 'N/A')}")
+        st.header(f"Title: {outline.get('courseTitle', 'N/A')}")
 
-        st.subheader("Course-Level Objectives")
+        st.markdown("**Course-Level Objectives**")
         for obj in outline.get("courseLevelObjectives", []):
             st.markdown(f"- {obj}")
 
         st.markdown("---")
 
         for i, module in enumerate(outline.get("modules", [])):
-            with st.expander(f"**Module {i+1}: {module.get('moduleTitle', 'N/A')}**", expanded=True):
-                st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
+            st.subheader(f"Module {i+1}: {module.get('moduleTitle', 'N/A')}")        
+            st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
+            
+            for j, section in enumerate(module.get("sections", [])):
+                st.markdown(f"#### Section {j+1}: {section.get('sectionTitle', 'N/A')}")
                 
-                # Dynamically collect section objectives to display at the module level
-                module_objectives = []
-                for section in module.get("sections", []):
-                    module_objectives.extend(section.get("sectionLevelObjectives", []))
+                for s_obj in section.get("sectionLevelObjectives", []):
+                    st.markdown(f"_**({s_obj.get('bloomsLevel', 'N/A')})**: {s_obj.get('objectiveText', 'N/A')}_")
 
-                st.markdown("**Module-Level Learning Objectives (Aggregated from Sections):**")
-                for obj in module_objectives:
-                    st.markdown(f"- **({obj.get('bloomsLevel', 'N/A')})**: {obj.get('objectiveText', 'N/A')}")
-                
-                st.markdown("---")
-
-                for j, section in enumerate(module.get("sections", [])):
-                    st.subheader(f"Section {i+1}.{j+1}: {section.get('sectionTitle', 'N/A')}")
-                    
-                    st.markdown("**Section-Level Objective(s):**")
-                    for s_obj in section.get("sectionLevelObjectives", []):
-                        st.info(f"**({s_obj.get('bloomsLevel', 'N/A')})**: {s_obj.get('objectiveText', 'N/A')}")
-
-                    for k, unit in enumerate(section.get("units", [])):
-                        st.markdown(f"**Unit {i+1}.{j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**")
-                        
+                for k, unit in enumerate(section.get("units", [])):
+                    with st.expander(f"**Unit {j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**", expanded=False):
                         unit_obj = unit.get("unitLevelObjective", {})
-                        st.markdown(f"> _**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
-
+                        st.markdown(f"_**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
                         st.markdown("**Key Points:**")
                         for point in unit.get("keyPoints", []):
                             st.markdown(f"  - {point}")
-                    st.markdown("") 
-
 
     # --- Display Output ---
     if 'generated_outline' in ss:
@@ -372,10 +355,6 @@ Investing time upfront in the outline will make the presentation of content more
         # Display the formatted outline
         display_outline(ss['generated_outline'])
 
-        # Display the raw JSON in an expander
-        # with st.expander("Show Raw JSON Output"):
-                #     st.json(ss['generated_outline'])
-    
     # --- Navigation ---
     st.divider()
     if st.button("Next: Module level planning →"):
@@ -482,7 +461,7 @@ def render_step_3():
         with st.expander("Bloom's Taxonomy", expanded=False):
             cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
             with cols[1]:
-                st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
+                st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
 
     # --- Helper for finalized visual style ---
     def finalized_style(is_final):
@@ -681,11 +660,6 @@ def render_step_4():
             for idx,q in enumerate(qs):
                 with st.expander(f"Question {idx+1}", expanded=False):
                     # Question stem
-                    # In UI, add help icons
-# st.text_input(
-#     "Question stem",
-#     help=CONTEXTUAL_HELP["question_tips"]["stem_writing"]
-# )
                     q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
                                         height=70, label_visibility="collapsed")
                     # Answer options
@@ -745,10 +719,6 @@ def render_step_5():
     # Seed checkbox states only once, on widget creation
     for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
         key = f"exp_inc_{block}"
-        # st.write(key)
-        # st.write(key in ss)
-        # st.write(ss[key])
-        # st.write(ss['include_opts'].get(block, True))
         if key not in ss:
             ss[key] = ss['include_opts'].get(block, True)
 

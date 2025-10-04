@@ -45,7 +45,7 @@ Generate a comprehensive course outline comprising:
 
 # Core Principles
 - Sequence topics from foundational to advanced for logical progression.
-- If a topic, concept, or point is pedagogically necessary but absent from the source material, flag it with the marker: [NOTE: Not covered in source material.].
+- Flag pedagogically necessary topics missing from the source material with: [NOTE: Not covered in source material.].
 - Strictly follow all IMFx course-building standards below.
 - Strictly follow the user's additional instructions.
 
@@ -71,6 +71,10 @@ You must follow a strict bottom-up approach for learning objectives:
 - Title: Descriptive and precise.
 - Learning Objective: Assign exactly ONE measurable learning objective for the unit. This objective must have a Bloom's level.
 - Key Points: 1-3 essential summary bullet points (non-empty array).
+
+## Pedagogical Completeness
+- You may include topics, concepts, examples, or key points absent from the source material if they are pedagogically essential for a logical learning progression.
+- Always flag additional content not present in the source material by appending [NOTE: Not covered in source material.] to the title or bullet point.
 
 # Output Specifications
 Return a single valid JSON object matching the schema defined below, using only this JSON object as output. Do not wrap, comment, or explain outside the JSON. All listed fields are required; all arrays must be non-empty. The sequence of elements should reflect optimal pedagogical progression.
@@ -125,7 +129,7 @@ Return a single valid JSON object matching the schema defined below, using only 
   ]
 }
 ```
-Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics/points included but not found in source, insert this note: [NOTE: Not covered in source material.]. Do not output any explanations or text outside the JSON schema.
+Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics/points included but not found in source, append this note: [NOTE: Not covered in source material.]. Do not output any explanations or text outside the JSON schema.
 """
 
 def build_outline_user_prompt(outline_guidance: str, source_text: str) -> str:
