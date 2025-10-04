@@ -241,6 +241,12 @@ Export questions to Microsoft Word
 ################################################
 def render_step_1():
     st.header("📚 Course Structure")
+
+    def _clear_outline_widget_state() -> None:
+        """Remove cached widget state tied to a previous outline."""
+        keys_to_remove = [key for key in ss.keys() if key.startswith("outline__")]
+        for key in keys_to_remove:
+            del ss[key]
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
@@ -315,6 +321,7 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = bool(ss.get("course_text"))
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
+            _clear_outline_widget_state()
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
 
     def _get_outline_node(path_parts):
