@@ -6,6 +6,7 @@ import hashlib
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
 from app.export_docx import build_questions_docx
+from app.display_content import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 
@@ -49,12 +50,11 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
     payload = "\n".join(parts)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
-
 ################################################
 # App setup
 ################################################
 # Page config
-st.set_page_config(page_title="ALTO - Design", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="BEACON - Design", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
 
 # Apply any pending restore from saved session state
 apply_pending_restore()
@@ -92,7 +92,7 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f":mortar_board: ALTO - Design{mock_warning if ss['MOCK_MODE'] else ''}")
+st.title(f":mortar_board: BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _AI support for smarter course design._")
 
 # --------------------------------------------------------------
@@ -233,14 +233,19 @@ Export questions to Microsoft Word
 
     # crisp separation from the rest of the page
     st.divider()
-    # small bottom breathing room
-    #st.write("")
+
 
 ################################################
 # 1 Course Outline
 ################################################
 def render_step_1():
     st.header("📚 Course Structure")
+
+    def _clear_outline_widget_state() -> None:
+        """Remove cached widget state tied to a previous outline."""
+        keys_to_remove = [key for key in ss.keys() if key.startswith("outline__")]
+        for key in keys_to_remove:
+            del ss[key]
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
@@ -315,45 +320,19 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = bool(ss.get("course_text"))
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
+            _clear_outline_widget_state()
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-
-    def display_outline(outline: Dict[str, Any]):
-        """
-        Parses the JSON outline and displays it in a user-friendly format.
-        LLM output was already converted to Python dict in generate_outline().
-        """
-        st.header(f"Title: {outline.get('courseTitle', 'N/A')}")
-
-        st.markdown("**Course-Level Objectives**")
-        for obj in outline.get("courseLevelObjectives", []):
-            st.markdown(f"- {obj}")
-
-        st.markdown("---")
-
-        for i, module in enumerate(outline.get("modules", [])):
-            st.subheader(f"Module {i+1}: {module.get('moduleTitle', 'N/A')}")        
-            st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
-            
-            for j, section in enumerate(module.get("sections", [])):
-                st.markdown(f"#### Section {j+1}: {section.get('sectionTitle', 'N/A')}")
-                
-                for s_obj in section.get("sectionLevelObjectives", []):
-                    st.markdown(f"_**({s_obj.get('bloomsLevel', 'N/A')})**: {s_obj.get('objectiveText', 'N/A')}_")
-
-                for k, unit in enumerate(section.get("units", [])):
-                    with st.expander(f"**Unit {j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**", expanded=False):
-                        unit_obj = unit.get("unitLevelObjective", {})
-                        st.markdown(f"_**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
-                        st.markdown("**Key Points:**")
-                        for point in unit.get("keyPoints", []):
-                            st.markdown(f"  - {point}")
 
     # --- Display Output ---
     if 'generated_outline' in ss:
-        st.success("Course outline generated successfully!")
         
+        # Switch between static and editable outline view
+        st.toggle("Editable outline", key="editable_outline", value=False)
         # Display the formatted outline
-        display_outline(ss['generated_outline'])
+        if ss["editable_outline"]:
+            display_editable_outline(ss['generated_outline'])
+        else:
+            display_static_outline(ss['generated_outline'])
 
     # --- Navigation ---
     st.divider()
@@ -398,10 +377,8 @@ def render_step_2():
         if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
             st.toast("Module content changed — LOs and questions cleared.")
             clear_module_dependent_outputs()
-            #st.caption(f"old sig: {ss['module_sig'][:8]}… → new: {new_mod_sig[:8]}…")
 
         # Persist the latest parse & signature
-        #ss["processed_file_keys"] = current_file_keys     # keep if you like, but no longer used to clear
         ss["module_files"] = [f.name for f in files]
         ss["module_text"] = text
         ss["module_tokens"] = tokens
@@ -414,14 +391,12 @@ def render_step_2():
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["module_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
-        #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["module_files"])])
         current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
     st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
-        #st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
         st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # --- Navigation ---
