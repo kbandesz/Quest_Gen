@@ -45,13 +45,34 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
     except Exception as e:
         raise Exception(f"API call failed: {e}")
 
+def _clean_objectives(d):
+    # Remove Bloom levels from LLM response (may want to use later)
+    if isinstance(d, dict):
+        # If this is a unitLevelObjective, replace dict with its "objectiveText"
+        if set(d.keys()) == {"bloomsLevel", "objectiveText"} or set(d.keys()) == {"objectiveText"}:
+            return d.get("objectiveText")
 
+        # Recurse into dictionary values
+        for k, v in list(d.items()):
+            if k == "unitLevelObjective":
+                d[k] = _clean_objectives(v)  # convert to string
+            elif k == "sectionLevelObjectives" and isinstance(v, list):
+                d[k] = [_clean_objectives(obj) for obj in v if isinstance(obj, dict)]
+            else:
+                d[k] = _clean_objectives(v)
+        return d
+
+    elif isinstance(d, list):
+        return [_clean_objectives(item) for item in d]
+
+    return d
+    
 def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
     if MOCK_MODE:
-        return const.generate_mock_llm_response()
+        return _clean_objectives(const.generate_mock_llm_response())
     user_prompt=prompts.build_outline_user_prompt(outline_guidance, source_material)
     obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
-    return obj
+    return _clean_objectives(obj)
 
 
 def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:
