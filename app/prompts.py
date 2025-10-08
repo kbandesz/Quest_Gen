@@ -51,9 +51,9 @@ Generate a comprehensive course outline comprising:
 
 # Constraints & Standards
 ## Learning Objective Hierarchy
-You must follow a strict bottom-up approach for learning objectives:
+When devising learning objectives, adhere to the Bloom's Taxonomy framework. You must follow a strict bottom-up approach:
 1.  **Unit Level:** Each unit must have exactly ONE specific narrow learning objective.
-2.  **Section Level:** Each section must have 1 to 2 "aggregate" learning objectives that summarize and encompass the objectives of the units within it.
+2.  **Section Level:** Each section must have 1 to 2 "aggregate" learning objectives that summarize and encompass the objectives of the units within it. Section objectives cannot have a higher Bloom level than the highest unit objective within the section.
 3.  **Module Level:** The module-level objectives are simply a direct list of all section-level objectives from that module. **Do not create a separate key for them in the JSON.**
 
 ## Module Design
@@ -64,12 +64,12 @@ You must follow a strict bottom-up approach for learning objectives:
 
 ## Section Design
 - Title: Concise and descriptive.
-- Learning Objectives: Create 1 to 2 measurable, "aggregate" objectives that summarize the skills covered in the units of this section. Each objective must have a Bloom's level. Section objectives cannot have a higher Bloom level than the highest unit-level objective in the section.
+- Learning Objectives: Create 1 to 2 measurable, "aggregate" objectives that summarize the skills covered in the units of this section.
 - Structure: Include 3-10 units for each section.
 
 ## Unit Design
 - Title: Descriptive and precise.
-- Learning Objective: Assign exactly ONE measurable learning objective for the unit. This objective must have a Bloom's level.
+- Learning Objective: Assign exactly ONE measurable learning objective for the unit.
 - Key Points: 1-3 essential summary bullet points (non-empty array).
 
 ## Pedagogical Completeness
@@ -95,31 +95,24 @@ Return a single valid JSON object matching the schema defined below, using only 
         {
           "sectionTitle": "[Section Title]",
           "sectionLevelObjectives": [
-             {
-                "bloomsLevel": "[e.g., Analyze]",
-                "objectiveText": "[An aggregate objective for this section]"
-             }
+            "[Aggregate objective 1]",
+            "[...]"
           ],
           "units": [
             {
               "unitTitle": "[Unit Title]",
-              "unitLevelObjective": {
-                "bloomsLevel": "[e.g., Remember]",
-                "objectiveText": "[A specific objective for this unit]"
-              },
+              "unitLevelObjective": "[A specific objective for this unit]",
               "keyPoints": [
-                "[Brief point 1]"
+                "[Brief point 1]",
+                "[...]"
               ],
             },
             {
               "unitTitle": "[Unit Title]",
-               "unitLevelObjective": {
-                "bloomsLevel": "[e.g., Understand]",
-                "objectiveText": "[A specific objective for this unit]"
-              },
+              "unitLevelObjective": "[A specific objective for this unit]",
               "keyPoints": [
                 "[Brief point 1]",
-                "[Brief point 2]"
+                "[...]"
               ],
             }
           ]

@@ -31,7 +31,7 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
     if client is None:
         set_runtime_config(MOCK_MODE, OPENAI_MODEL)
     try:
-        resp = client.chat.completions.create(
+        resp = client.chat.completions.create( # type: ignore
             model=OPENAI_MODEL,
             messages=[
                 {"role":"system","content":system},
@@ -41,11 +41,11 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
             response_format={"type":"json_object"},
             max_completion_tokens=max_tokens,
         )
-        return parse_json_strict(resp.choices[0].message.content)
+        return parse_json_strict(resp.choices[0].message.content) # type: ignore
     except Exception as e:
         raise Exception(f"API call failed: {e}")
 
-def _clean_objectives(d):
+def _clean_objectives(d:Dict[str,Any]):
     # Remove Bloom levels from LLM response (may want to use later)
     if isinstance(d, dict):
         # If this is a unitLevelObjective, replace dict with its "objectiveText"
@@ -69,10 +69,10 @@ def _clean_objectives(d):
     
 def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
     if MOCK_MODE:
-        return _clean_objectives(const.generate_mock_llm_response())
+        return const.generate_mock_outline()
     user_prompt=prompts.build_outline_user_prompt(outline_guidance, source_material)
-    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=1800, temperature=0.4)
-    return _clean_objectives(obj)
+    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=3000, temperature=0.4)
+    return obj
 
 
 def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,Any]:

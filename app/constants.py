@@ -164,7 +164,7 @@ def generate_mock_questions(n:int=2)->Dict[str,Any]:
     return {"questions":qs}
 
 # Mock course outline
-def generate_mock_llm_response()->Dict[str,Any]:
+def generate_mock_outline()->Dict[str,Any]:
     """
     Simulates a call to a Large Language Model.
     Returns a pre-defined, structured JSON response for demonstration.
@@ -190,12 +190,12 @@ def generate_mock_llm_response()->Dict[str,Any]:
             {
               "sectionTitle": "Introduction to Public Debt",
               "sectionLevelObjectives": [
-                { "bloomsLevel": "Understand", "objectiveText": "Explain the fundamental concepts of public debt and the government budget constraint." }
+                "Explain the fundamental concepts of public debt and the government budget constraint."
               ],
               "units": [
                 {
                   "unitTitle": "What is Public Debt?",
-                  "unitLevelObjective": { "bloomsLevel": "Remember", "objectiveText": "Define public sector debt and list common metrics." },
+                  "unitLevelObjective": "Define public sector debt and list common metrics.",
                   "keyPoints": [
                     "Definition of public sector debt.",
                     "Common measures and metrics (e.g., Debt-to-GDP ratio)."
@@ -203,7 +203,7 @@ def generate_mock_llm_response()->Dict[str,Any]:
                 },
                 {
                   "unitTitle": "The Government Budget Constraint",
-                  "unitLevelObjective": { "bloomsLevel": "Understand", "objectiveText": "Explain how government deficits lead to debt accumulation." },
+                  "unitLevelObjective": "Explain how government deficits lead to debt accumulation.",
                   "keyPoints": [
                     "Understanding the flow of government revenue and expenditure.",
                     "How deficits lead to debt accumulation."
@@ -214,19 +214,20 @@ def generate_mock_llm_response()->Dict[str,Any]:
             {
               "sectionTitle": "The Debt Dynamics Equation",
               "sectionLevelObjectives": [
-                { "bloomsLevel": "Apply", "objectiveText": "Apply the debt dynamics equation to identify key variables and calculate the debt-stabilizing primary balance." }
+                "Apply the debt dynamics equation to identify key variables and calculate the debt-stabilizing primary balance.",
+                "If you see this, email Andras and you will get a coffee."
               ],
               "units": [
                 {
                   "unitTitle": "Deconstructing the Equation",
-                  "unitLevelObjective": { "bloomsLevel": "Identify", "objectiveText": "Identify the key variables in the debt dynamics equation." },
+                  "unitLevelObjective": "Identify the key variables in the debt dynamics equation.",
                   "keyPoints": [
                     "Identifying key variables: primary balance, interest rate, growth rate."
                   ],
                 },
                 {
                   "unitTitle": "Debt-Stabilizing Primary Balance",
-                  "unitLevelObjective": { "bloomsLevel": "Apply", "objectiveText": "Calculate the primary balance required to stabilize the debt ratio." },
+                  "unitLevelObjective": "Calculate the primary balance required to stabilize the debt ratio.",
                   "keyPoints": [
                     "Calculating the primary balance needed to keep the debt ratio constant."
                   ],
@@ -236,19 +237,19 @@ def generate_mock_llm_response()->Dict[str,Any]:
             {
               "sectionTitle": "Solvency and Sustainability",
               "sectionLevelObjectives": [
-                { "bloomsLevel": "Analyze", "objectiveText": "Differentiate between the concepts of debt solvency and sustainability." }
+                "Differentiate between the concepts of debt solvency and sustainability."
               ],
               "units": [
                 {
                   "unitTitle": "Defining Solvency",
-                  "unitLevelObjective": { "bloomsLevel": "Understand", "objectiveText": "Explain the concept of government debt solvency." },
+                  "unitLevelObjective": "Explain the concept of government debt solvency.",
                   "keyPoints": [
                     "The government's long-run ability to service its debt."
                   ],
                 },
                 {
                   "unitTitle": "Defining Sustainability",
-                  "unitLevelObjective": { "bloomsLevel": "Analyze", "objectiveText": "Distinguish sustainability from solvency." },
+                  "unitLevelObjective": "Distinguish sustainability from solvency.",
                   "keyPoints": [
                     "Maintaining a stable, non-explosive debt path without major policy shifts.",
                     "[NOTE: This topic was not found in the source material but is included for pedagogical completeness.]"
@@ -259,12 +260,12 @@ def generate_mock_llm_response()->Dict[str,Any]:
             {
               "sectionTitle": "Module 1 Summary",
               "sectionLevelObjectives": [
-                { "bloomsLevel": "Understand", "objectiveText": "Summarize the key principles of public debt sustainability analysis presented in the module." }
+                "Summarize the key principles of public debt sustainability analysis presented in the module."
               ],
               "units": [
                 {
                   "unitTitle": "Key Takeaways",
-                  "unitLevelObjective": { "bloomsLevel": "Remember", "objectiveText": "Recall the most important concepts of the module." },
+                  "unitLevelObjective": "Recall the most important concepts of the module.",
                   "keyPoints": [
                     "Recap of the debt dynamics equation.",
                     "Importance of the interest rate-growth differential."

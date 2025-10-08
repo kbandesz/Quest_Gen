@@ -33,12 +33,10 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def _sig_outline(outline: Dict[str, Any]) -> str:
+def _sig_outline(outline: Optional[Dict[str, Any]]) -> str:
     """Stable signature for the generated outline content."""
-
     if not outline:
         return ""
-
     serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
     return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
 
@@ -65,7 +63,7 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
 # App setup
 ################################################
 # Page config
-st.set_page_config(page_title="BEACON - Design", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="BEACON - Design", page_icon="🌟", layout="wide", initial_sidebar_state="collapsed")
 
 # Apply any pending restore from saved session state
 apply_pending_restore()
@@ -106,8 +104,8 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f":mortar_board: BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown("##### _AI support for smarter course design._")
+st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
+st.markdown("##### _Smarter course design—powered by AI._")
 
 # --------------------------------------------------------------
 # Helpers for clearing derived state
@@ -148,8 +146,8 @@ def reset_uploaded_content() -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []
-    #ss["processed_file_keys"] = None
     ss["outline_guidance"] = ""
+    ss.pop("outline_guidance_key", None)
     ss["course_text"] = ""
     ss["course_tokens"] = 0
     ss["module_text"] = ""
@@ -257,7 +255,7 @@ def render_step_1():
 
     def _clear_outline_widget_state() -> None:
         """Remove cached widget state tied to a previous outline."""
-        keys_to_remove = [key for key in ss.keys() if key.startswith("outline__")]
+        keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
         for key in keys_to_remove:
             del ss[key]
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
@@ -271,6 +269,7 @@ Investing time upfront in the outline will make the presentation of content more
         with cols[1]:
             st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
     
+    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you provide. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
     st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
     files = st.file_uploader(
@@ -321,7 +320,7 @@ Investing time upfront in the outline will make the presentation of content more
     st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
     #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
-        ss["outline_guidance"] = "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies."
+        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
     
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
@@ -355,7 +354,8 @@ Investing time upfront in the outline will make the presentation of content more
         if ss.get("outline_sig") != current_outline_sig:
             ss["outline_sig"] = current_outline_sig
 
-        st.markdown("### Export outline")
+        st.markdown("---")
+        st.markdown("#### Export outline")
         cols = st.columns([1, 1])
         with cols[0]:
             if st.button("Build outline DOCX"):

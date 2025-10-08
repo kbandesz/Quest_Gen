@@ -3,6 +3,7 @@ from typing import Dict, Any
 
 ss = st.session_state
 
+# Helper functions for editable outline rendering
 def _get_outline_node(path_parts):
     """Return the container and final key/index for a dotted outline path."""
     if "generated_outline" not in ss:
@@ -55,7 +56,7 @@ def _update_outline_value(path: str, widget_key: str):
 
     ss[widget_key] = "\n".join(normalized) if isinstance(normalized, list) else normalized
 
-def outline_text_field(label: str, path: str, value: Any, *, area: bool = False):
+def outline_text_field(label: str, path: str, value: Any, *, area: bool = False, **widget_kwargs):
     widget_key = f"outline__{path.replace('.', '__')}"
 
     if isinstance(value, list):
@@ -71,6 +72,7 @@ def outline_text_field(label: str, path: str, value: Any, *, area: bool = False)
         "key": widget_key,
         "on_change": _update_outline_value,
         "args": (path, widget_key),
+        **widget_kwargs,
     }
 
     if area:
@@ -87,11 +89,13 @@ def display_editable_outline(outline: Dict[str, Any]):
     outline.setdefault("modules", [])
 
     st.header("Course Title")
-    outline_text_field("Title", "courseTitle", outline.get("courseTitle", ""))
+    outline_text_field("Title", "courseTitle", outline.get("courseTitle", ""), label_visibility="collapsed")
 
-    st.markdown("**Course-Level Objectives**")
+    st.markdown("**Course-Level Objectives (one per line)**")
     outline_text_field("Objectives (one per line)", "courseLevelObjectives", 
-                        "\n".join(outline.get("courseLevelObjectives", [])), area=True)
+                        "\n".join(outline.get("courseLevelObjectives", [])),
+                        area=True, label_visibility="collapsed", height=150
+                        )
 
 
     st.divider()
