@@ -17,7 +17,7 @@ You are an expert Instructional Designer tasked with creating a high-level outli
 - Deconstruct content into a logical sequence of modules progressing from foundational to advanced topics, each module requiring 2-3 hours of learning time.
 - For each module: define the title, provide an overview, and structure it into 3-5 sections.
 - For each section: define 1-2 encompassing learning objectives, and structure the section into 3-10 units.
-- For each unit: define 1 granular learning objective and provide key summary points. Flag any gaps as specified.
+- For each unit: define 1 granular learning objective and provide key summary points. Flag any gaps in source material as specified.
 
 # Input format
 ```
@@ -45,15 +45,15 @@ Generate a comprehensive course outline comprising:
 
 # Core Principles
 - Sequence topics from foundational to advanced for logical progression.
-- Flag missing topics with: [NOTE: This topic was not found in the source material but is included for pedagogical completeness.]
+- Flag pedagogically necessary topics missing from the source material with: [NOTE: Not covered in source material.].
 - Strictly follow all IMFx course-building standards below.
 - Strictly follow the user's additional instructions.
 
 # Constraints & Standards
 ## Learning Objective Hierarchy
-You must follow a strict bottom-up approach for learning objectives:
+When devising learning objectives, adhere to the Bloom's Taxonomy framework. You must follow a strict bottom-up approach:
 1.  **Unit Level:** Each unit must have exactly ONE specific narrow learning objective.
-2.  **Section Level:** Each section must have 1 to 2 "aggregate" learning objectives that summarize and encompass the objectives of the units within it.
+2.  **Section Level:** Each section must have 1 to 2 "aggregate" learning objectives that summarize and encompass the objectives of the units within it. Section objectives cannot have a higher Bloom level than the highest unit objective within the section.
 3.  **Module Level:** The module-level objectives are simply a direct list of all section-level objectives from that module. **Do not create a separate key for them in the JSON.**
 
 ## Module Design
@@ -64,13 +64,17 @@ You must follow a strict bottom-up approach for learning objectives:
 
 ## Section Design
 - Title: Concise and descriptive.
-- Learning Objectives: Create 1 to 2 measurable, "aggregate" objectives that summarize the skills covered in the units of this section. Each objective must have a Bloom's level. Section objectives cannot have a higher Bloom level than the highest unit-level objective in the section.
+- Learning Objectives: Create 1 to 2 measurable, "aggregate" objectives that summarize the skills covered in the units of this section.
 - Structure: Include 3-10 units for each section.
 
 ## Unit Design
 - Title: Descriptive and precise.
-- Learning Objective: Assign exactly ONE measurable learning objective for the unit. This objective must have a Bloom's level.
+- Learning Objective: Assign exactly ONE measurable learning objective for the unit.
 - Key Points: 1-3 essential summary bullet points (non-empty array).
+
+## Pedagogical Completeness
+- You may include topics, concepts, examples, or key points absent from the source material if they are pedagogically essential for a logical learning progression.
+- Always flag additional content not present in the source material by appending [NOTE: Not covered in source material.] to the title or bullet point.
 
 # Output Specifications
 Return a single valid JSON object matching the schema defined below, using only this JSON object as output. Do not wrap, comment, or explain outside the JSON. All listed fields are required; all arrays must be non-empty. The sequence of elements should reflect optimal pedagogical progression.
@@ -91,31 +95,24 @@ Return a single valid JSON object matching the schema defined below, using only 
         {
           "sectionTitle": "[Section Title]",
           "sectionLevelObjectives": [
-             {
-                "bloomsLevel": "[e.g., Analyze]",
-                "objectiveText": "[An aggregate objective for this section]"
-             }
+            "[Aggregate objective 1]",
+            "[...]"
           ],
           "units": [
             {
               "unitTitle": "[Unit Title]",
-              "unitLevelObjective": {
-                "bloomsLevel": "[e.g., Remember]",
-                "objectiveText": "[A specific objective for this unit]"
-              },
+              "unitLevelObjective": "[A specific objective for this unit]",
               "keyPoints": [
-                "[Brief point 1]"
+                "[Brief point 1]",
+                "[...]"
               ],
             },
             {
               "unitTitle": "[Unit Title]",
-               "unitLevelObjective": {
-                "bloomsLevel": "[e.g., Understand]",
-                "objectiveText": "[A specific objective for this unit]"
-              },
+              "unitLevelObjective": "[A specific objective for this unit]",
               "keyPoints": [
                 "[Brief point 1]",
-                "[Brief point 2]"
+                "[...]"
               ],
             }
           ]
@@ -125,7 +122,7 @@ Return a single valid JSON object matching the schema defined below, using only 
   ]
 }
 ```
-Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics included but not found in source, insert this note: [NOTE: This topic was not found in the source material but is included for pedagogical completeness.]. Do not output any explanations or text outside the JSON schema.
+Every module, section, and unit must include all required fields. Arrays (courseLevelObjectives, modules, sections, units, keyPoints) must not be empty and must represent a logical learning sequence. For topics/points included but not found in source, append this note: [NOTE: Not covered in source material.]. Do not output any explanations or text outside the JSON schema.
 """
 
 def build_outline_user_prompt(outline_guidance: str, source_text: str) -> str:

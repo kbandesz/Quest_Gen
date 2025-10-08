@@ -2,10 +2,12 @@ import streamlit as st
 import uuid
 from typing import Dict, Any, Optional
 import hashlib
+import json
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
-from app.export_docx import build_questions_docx
+from app.export_docx import build_questions_docx, build_outline_docx
+from app.display_content import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 
@@ -30,6 +32,14 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
     payload = f"{final_lo_text}||{intended_level}||{module_sig}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
+
+def _sig_outline(outline: Optional[Dict[str, Any]]) -> str:
+    """Stable signature for the generated outline content."""
+    if not outline:
+        return ""
+    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
+
 def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
     """Stable signature over all editable question fields."""
     
@@ -49,12 +59,11 @@ def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
     payload = "\n".join(parts)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
-
 ################################################
 # App setup
 ################################################
 # Page config
-st.set_page_config(page_title="ALTO - Design", page_icon=":mortar_board:", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="BEACON - Design", page_icon="🌟", layout="wide", initial_sidebar_state="collapsed")
 
 # Apply any pending restore from saved session state
 apply_pending_restore()
@@ -82,6 +91,9 @@ ss.setdefault("questions_sig", None)
 ss.setdefault("include_opts", {})
 ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
 ss.setdefault("docx_file", "")
+ss.setdefault("outline_docx_file", b"")
+ss.setdefault("outline_sig", None)
+ss.setdefault("outline_doc_sig", None)
 
 ss.setdefault("MOCK_MODE", True)
 ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
@@ -92,8 +104,8 @@ set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f":mortar_board: ALTO - Design{mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown("##### _AI support for smarter course design._")
+st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
+st.markdown("##### _Smarter course design—powered by AI._")
 
 # --------------------------------------------------------------
 # Helpers for clearing derived state
@@ -134,8 +146,8 @@ def reset_uploaded_content() -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []
-    #ss["processed_file_keys"] = None
     ss["outline_guidance"] = ""
+    ss.pop("outline_guidance_key", None)
     ss["course_text"] = ""
     ss["course_tokens"] = 0
     ss["module_text"] = ""
@@ -233,14 +245,19 @@ Export questions to Microsoft Word
 
     # crisp separation from the rest of the page
     st.divider()
-    # small bottom breathing room
-    #st.write("")
+
 
 ################################################
 # 1 Course Outline
 ################################################
 def render_step_1():
     st.header("📚 Course Structure")
+
+    def _clear_outline_widget_state() -> None:
+        """Remove cached widget state tied to a previous outline."""
+        keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
+        for key in keys_to_remove:
+            del ss[key]
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
@@ -250,9 +267,9 @@ Investing time upfront in the outline will make the presentation of content more
         with cols[0]:
             st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
         with cols[1]:
-            #st.image(const.COURSE_STRUCTURE_IMAGE, use_container_width=True)
-            st.image(const.COURSE_STRUCTURE_VISUAL, use_container_width=True)
+            st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
     
+    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you provide. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
     st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
     files = st.file_uploader(
@@ -272,14 +289,14 @@ Investing time upfront in the outline will make the presentation of content more
 
     # Process files
     if files:
-        #ss["course_files"] = files
-        ss["course_files"] = [f.name for f in files]
-        try:
-            text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
-        except Exception as e:
-            st.error(e)
-            text, tokens = "", 0
+        with st.spinner("Extracting text. Please wait..."):
+            try:
+                text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
+            except Exception as e:
+                st.error(e)
+                text, tokens = "", 0
 
+        ss["course_files"] = [f.name for f in files]
         ss["course_text"] = text
         ss["course_tokens"] = tokens
 
@@ -296,13 +313,14 @@ Investing time upfront in the outline will make the presentation of content more
     # Display token count & preview from session (stable across reruns)
     st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
-        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+        #st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
     st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
     #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
-        ss["outline_guidance"] = "Create 2 modules, largely following the structure of XXX.pdf. Use the PowerPoint presentations for case studies."
+        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
     
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
@@ -315,66 +333,49 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = bool(ss.get("course_text"))
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
+            _clear_outline_widget_state()
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-
-    def display_outline(outline: Dict[str, Any]):
-        """
-        Parses the JSON outline and displays it in a user-friendly format.
-        LLM output was already converted to Python dict in generate_outline().
-        """
-        st.header(f"Course Outline: {outline.get('courseTitle', 'N/A')}")
-
-        st.subheader("Course-Level Objectives")
-        for obj in outline.get("courseLevelObjectives", []):
-            st.markdown(f"- {obj}")
-
-        st.markdown("---")
-
-        for i, module in enumerate(outline.get("modules", [])):
-            with st.expander(f"**Module {i+1}: {module.get('moduleTitle', 'N/A')}**", expanded=True):
-                st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
-                
-                # Dynamically collect section objectives to display at the module level
-                module_objectives = []
-                for section in module.get("sections", []):
-                    module_objectives.extend(section.get("sectionLevelObjectives", []))
-
-                st.markdown("**Module-Level Learning Objectives (Aggregated from Sections):**")
-                for obj in module_objectives:
-                    st.markdown(f"- **({obj.get('bloomsLevel', 'N/A')})**: {obj.get('objectiveText', 'N/A')}")
-                
-                st.markdown("---")
-
-                for j, section in enumerate(module.get("sections", [])):
-                    st.subheader(f"Section {i+1}.{j+1}: {section.get('sectionTitle', 'N/A')}")
-                    
-                    st.markdown("**Section-Level Objective(s):**")
-                    for s_obj in section.get("sectionLevelObjectives", []):
-                        st.info(f"**({s_obj.get('bloomsLevel', 'N/A')})**: {s_obj.get('objectiveText', 'N/A')}")
-
-                    for k, unit in enumerate(section.get("units", [])):
-                        st.markdown(f"**Unit {i+1}.{j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**")
-                        
-                        unit_obj = unit.get("unitLevelObjective", {})
-                        st.markdown(f"> _**Objective ({unit_obj.get('bloomsLevel', 'N/A')}):** {unit_obj.get('objectiveText', 'N/A')}_")
-
-                        st.markdown("**Key Points:**")
-                        for point in unit.get("keyPoints", []):
-                            st.markdown(f"  - {point}")
-                    st.markdown("") 
-
+            ss["outline_sig"] = _sig_outline(ss.get("generated_outline"))
+            ss["outline_docx_file"] = b""
+            ss["outline_doc_sig"] = None
 
     # --- Display Output ---
     if 'generated_outline' in ss:
-        st.success("Course outline generated successfully!")
-        
-        # Display the formatted outline
-        display_outline(ss['generated_outline'])
 
-        # Display the raw JSON in an expander
-        # with st.expander("Show Raw JSON Output"):
-                #     st.json(ss['generated_outline'])
-    
+        # Switch between static and editable outline view
+        st.toggle("Editable outline", key="editable_outline", value=False)
+        # Display the formatted outline
+        if ss["editable_outline"]:
+            display_editable_outline(ss['generated_outline'])
+        else:
+            display_static_outline(ss['generated_outline'])
+
+        current_outline_sig = _sig_outline(ss.get("generated_outline"))
+        if ss.get("outline_sig") != current_outline_sig:
+            ss["outline_sig"] = current_outline_sig
+
+        st.markdown("---")
+        st.markdown("#### Export outline")
+        cols = st.columns([1, 1])
+        with cols[0]:
+            if st.button("Build outline DOCX"):
+                ss["outline_docx_file"] = build_outline_docx(ss["generated_outline"])
+                ss["outline_doc_sig"] = current_outline_sig
+        with cols[1]:
+            doc_ready = bool(ss.get("outline_docx_file")) and ss.get("outline_doc_sig") == current_outline_sig
+            if ss.get("outline_docx_file") and not doc_ready:
+                help_msg = "Outline changed. Rebuild the DOCX to download the latest version."
+            else:
+                help_msg = "Build the outline DOCX before downloading."
+            st.download_button(
+                "Download outline",
+                data=ss.get("outline_docx_file", b""),
+                file_name="course_outline.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                disabled=not doc_ready,
+                help=help_msg if not doc_ready else "",
+            )
+
     # --- Navigation ---
     st.divider()
     if st.button("Next: Module level planning →"):
@@ -418,10 +419,8 @@ def render_step_2():
         if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
             st.toast("Module content changed — LOs and questions cleared.")
             clear_module_dependent_outputs()
-            st.caption(f"old sig: {ss['module_sig'][:8]}… → new: {new_mod_sig[:8]}…")
 
         # Persist the latest parse & signature
-        #ss["processed_file_keys"] = current_file_keys     # keep if you like, but no longer used to clear
         ss["module_files"] = [f.name for f in files]
         ss["module_text"] = text
         ss["module_tokens"] = tokens
@@ -434,14 +433,13 @@ def render_step_2():
     # Display currently uploaded files from the session state (stable across reruns)
     if ss["module_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
-        #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["module_files"])])
         current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
         st.markdown(current_files)
 
     # Display token count & preview from session (stable across reruns)
     st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
     with st.expander("Preview first 5,000 characters", expanded=False):
-        st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, key="preview_area")
+        st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # --- Navigation ---
     st.divider()
@@ -480,7 +478,7 @@ def render_step_3():
         with st.expander("Bloom's Taxonomy", expanded=False):
             cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
             with cols[1]:
-                st.image(const.BLOOM_PYRAMID_IMAGE, use_container_width=True)
+                st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
 
     # --- Helper for finalized visual style ---
     def finalized_style(is_final):
@@ -679,11 +677,6 @@ def render_step_4():
             for idx,q in enumerate(qs):
                 with st.expander(f"Question {idx+1}", expanded=False):
                     # Question stem
-                    # In UI, add help icons
-# st.text_input(
-#     "Question stem",
-#     help=CONTEXTUAL_HELP["question_tips"]["stem_writing"]
-# )
                     q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
                                         height=70, label_visibility="collapsed")
                     # Answer options
@@ -743,10 +736,6 @@ def render_step_5():
     # Seed checkbox states only once, on widget creation
     for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
         key = f"exp_inc_{block}"
-        # st.write(key)
-        # st.write(key in ss)
-        # st.write(ss[key])
-        # st.write(ss['include_opts'].get(block, True))
         if key not in ss:
             ss[key] = ss['include_opts'].get(block, True)
 
