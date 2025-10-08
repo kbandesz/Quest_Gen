@@ -2,10 +2,11 @@ import streamlit as st
 import uuid
 from typing import Dict, Any, Optional
 import hashlib
+import json
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
-from app.export_docx import build_questions_docx
+from app.export_docx import build_questions_docx, build_outline_docx
 from app.display_content import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
@@ -30,6 +31,16 @@ def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) ->
     # Generation depends on final LO text + intended level + module text
     payload = f"{final_lo_text}||{intended_level}||{module_sig}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _sig_outline(outline: Dict[str, Any]) -> str:
+    """Stable signature for the generated outline content."""
+
+    if not outline:
+        return ""
+
+    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
 
 def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
     """Stable signature over all editable question fields."""
@@ -82,6 +93,9 @@ ss.setdefault("questions_sig", None)
 ss.setdefault("include_opts", {})
 ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
 ss.setdefault("docx_file", "")
+ss.setdefault("outline_docx_file", b"")
+ss.setdefault("outline_sig", None)
+ss.setdefault("outline_doc_sig", None)
 
 ss.setdefault("MOCK_MODE", True)
 ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
@@ -322,10 +336,13 @@ Investing time upfront in the outline will make the presentation of content more
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             _clear_outline_widget_state()
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
+            ss["outline_sig"] = _sig_outline(ss.get("generated_outline"))
+            ss["outline_docx_file"] = b""
+            ss["outline_doc_sig"] = None
 
     # --- Display Output ---
     if 'generated_outline' in ss:
-        
+
         # Switch between static and editable outline view
         st.toggle("Editable outline", key="editable_outline", value=False)
         # Display the formatted outline
@@ -333,6 +350,31 @@ Investing time upfront in the outline will make the presentation of content more
             display_editable_outline(ss['generated_outline'])
         else:
             display_static_outline(ss['generated_outline'])
+
+        current_outline_sig = _sig_outline(ss.get("generated_outline"))
+        if ss.get("outline_sig") != current_outline_sig:
+            ss["outline_sig"] = current_outline_sig
+
+        st.markdown("### Export outline")
+        cols = st.columns([1, 1])
+        with cols[0]:
+            if st.button("Build outline DOCX"):
+                ss["outline_docx_file"] = build_outline_docx(ss["generated_outline"])
+                ss["outline_doc_sig"] = current_outline_sig
+        with cols[1]:
+            doc_ready = bool(ss.get("outline_docx_file")) and ss.get("outline_doc_sig") == current_outline_sig
+            if ss.get("outline_docx_file") and not doc_ready:
+                help_msg = "Outline changed. Rebuild the DOCX to download the latest version."
+            else:
+                help_msg = "Build the outline DOCX before downloading."
+            st.download_button(
+                "Download outline",
+                data=ss.get("outline_docx_file", b""),
+                file_name="course_outline.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                disabled=not doc_ready,
+                help=help_msg if not doc_ready else "",
+            )
 
     # --- Navigation ---
     st.divider()
