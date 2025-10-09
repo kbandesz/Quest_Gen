@@ -410,7 +410,7 @@ def render_step_2():
     st.header("📂 Upload Module Material", help=help_upload)
 
     files: List[Any] = []
-    upload_col, import_col = st.columns([5, 1])
+    upload_col, gap_col, import_col = st.columns([8, 1, 3],vertical_alignment="center")
     with upload_col:
         files = st.file_uploader(
             "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
@@ -424,7 +424,7 @@ def render_step_2():
     with import_col:
         import_disabled = not bool(ss.get("course_text"))
         if st.button(
-            "Import all",
+            "Import from outline",
             help="Import all source material uploaded for the course outline",
             disabled=import_disabled,
         ):
@@ -559,7 +559,10 @@ def render_step_3():
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
-                if st.button("Alignment Check", key=f"align_{lo['id']}_btn", disabled=is_final, help="Have another pair of AI eyes check your LO."):
+                if st.button("Alignment Check", key=f"align_{lo['id']}_btn",
+                             disabled=is_final, type="primary",
+                             help="Have another pair of AI eyes check your LO."
+                             ):
                     with st.spinner("Checking alignment..."):
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                         lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
@@ -613,7 +616,7 @@ def render_step_3():
     # --- Check All / Accept All buttons ---
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
-        if st.button("Check All", disabled=not ss["los"]):
+        if st.button("Check All", type="primary", disabled=not ss["los"]):
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
@@ -663,7 +666,7 @@ def render_step_4():
         value=1,
         key="n_questions",
     )
-    if st.button("Generate", disabled=not can_generate(ss)):
+    if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
             clear_questions()
