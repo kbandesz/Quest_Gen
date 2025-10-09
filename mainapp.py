@@ -1,6 +1,6 @@
 import streamlit as st
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import hashlib
 import json
 
@@ -141,6 +141,25 @@ def clear_module_dependent_outputs() -> None:
     ss["__last_clear_reason__"] = "module_sig_changed"
     ss["los"].clear()
     clear_questions()
+
+
+def _apply_module_content(text: str, tokens: int, file_names: List[str]) -> None:
+    """Update session state with new module content and clear dependents if needed."""
+
+    text = text or ""
+    tokens = tokens or 0
+    file_names = file_names or []
+
+    new_mod_sig = _sig_module(text)
+
+    if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
+        st.toast("Module content changed — LOs and questions cleared.")
+        clear_module_dependent_outputs()
+
+    ss["module_files"] = file_names
+    ss["module_text"] = text
+    ss["module_tokens"] = tokens
+    ss["module_sig"] = new_mod_sig
 
 def reset_uploaded_content() -> None:
     """Remove uploaded module data and reset uploader widget."""
@@ -390,16 +409,27 @@ def render_step_2():
                 presentations, or any other documents that you plan to use for writing the module content."""
     st.header("📂 Upload Module Material", help=help_upload)
 
-    files=st.file_uploader(
-        "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
-        type=["pdf","docx","pptx","txt"],
-        accept_multiple_files=True,
-        key=f"module_file_uploader_{ss['uploader_key']}",
-        disabled=ss["MOCK_MODE"]
+    files: List[Any] = []
+    upload_col, gap_col, import_col = st.columns([8, 1, 3],vertical_alignment="center")
+    with upload_col:
+        files = st.file_uploader(
+            "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
+            type=["pdf", "docx", "pptx", "txt"],
+            accept_multiple_files=True,
+            key=f"module_file_uploader_{ss['uploader_key']}",
+            disabled=ss["MOCK_MODE"],
         ) or []
-    # In mock mode, override with the mock file
-    if ss["MOCK_MODE"]:
-        files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
+        if ss["MOCK_MODE"]:
+            files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
+    with import_col:
+        import_disabled = not bool(ss.get("course_text"))
+        if st.button(
+            "Import from outline",
+            help="Import all source material uploaded for the course outline",
+            disabled=import_disabled,
+        ):
+            course_files = list(ss.get("course_files") or [])
+            _apply_module_content(ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
 
 # --- Process files based on actual content, not metadata ---
     if files:
@@ -413,21 +443,10 @@ def render_step_2():
             st.error(e)
             text, tokens = "", 0
 
-        new_mod_sig = _sig_module(text or "")
+        _apply_module_content(text, tokens, [f.name for f in files])
 
-        # Only clear when content actually changed
-        if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
-            st.toast("Module content changed — LOs and questions cleared.")
-            clear_module_dependent_outputs()
-
-        # Persist the latest parse & signature
-        ss["module_files"] = [f.name for f in files]
-        ss["module_text"] = text
-        ss["module_tokens"] = tokens
-        ss["module_sig"] = new_mod_sig
-
-        if ss["module_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+    if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
+        st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
 
     # Display currently uploaded files from the session state (stable across reruns)
@@ -540,7 +559,10 @@ def render_step_3():
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
-                if st.button("Alignment Check", key=f"align_{lo['id']}_btn", disabled=is_final, help="Have another pair of AI eyes check your LO."):
+                if st.button("Alignment Check", key=f"align_{lo['id']}_btn",
+                             disabled=is_final, type="primary",
+                             help="Have another pair of AI eyes check your LO."
+                             ):
                     with st.spinner("Checking alignment..."):
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                         lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
@@ -594,7 +616,7 @@ def render_step_3():
     # --- Check All / Accept All buttons ---
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
-        if st.button("Check All", disabled=not ss["los"]):
+        if st.button("Check All", type="primary", disabled=not ss["los"]):
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
@@ -644,7 +666,7 @@ def render_step_4():
         value=1,
         key="n_questions",
     )
-    if st.button("Generate", disabled=not can_generate(ss)):
+    if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
             clear_questions()
