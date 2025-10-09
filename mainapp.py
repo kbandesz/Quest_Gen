@@ -410,7 +410,7 @@ def render_step_2():
     st.header("📂 Upload Module Material", help=help_upload)
 
     files: List[Any] = []
-    upload_col, gap_col, import_col = st.columns([8, 1, 3],vertical_alignment="center")
+    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
     with upload_col:
         files = st.file_uploader(
             "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
