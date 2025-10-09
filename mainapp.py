@@ -87,6 +87,8 @@ ss.setdefault("module_sig", "")
 ss.setdefault("los", [])
 ss.setdefault("questions", {})
 ss.setdefault("questions_sig", None)
+ss.setdefault("show_lo_import_dialog", False)
+ss.setdefault("lo_import_selection", [])
 
 ss.setdefault("include_opts", {})
 ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
@@ -482,7 +484,13 @@ def render_step_3():
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
                     you will find information and tips below and AI will also help you refine your objectives."""
     st.header("🎯 Learning Objectives", help=help_objectives)
-    
+
+    if ss.pop("lo_import_toast", False):
+        st.toast("Learning objectives imported. Don't forget to set Bloom levels for further analysis.")
+
+    outline_modules = ((ss.get("generated_outline") or {}).get("modules") or [])
+    has_outline_modules = bool(outline_modules)
+
     st.markdown(const.LO_DEF)
     with st.container(border=True):
         st.markdown("**Tips for Writing Effective Learning Objectives**")
@@ -504,6 +512,15 @@ def render_step_3():
         if is_final:
             return "background-color: #e6ffe6; border: 2px solid #2ecc40; border-radius: 6px;"
         return ""
+
+    def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
+        collected: List[str] = []
+        for section in module.get("sections", []) or []:
+            for objective in section.get("sectionLevelObjectives", []) or []:
+                text = (objective or "").strip()
+                if text:
+                    collected.append(text)
+        return collected
 
     # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
@@ -600,18 +617,75 @@ def render_step_3():
                 if label != "consistent" and lo["alignment"].get("suggested_lo"):
                     st.markdown(f"**Suggested re-write:**\n> {lo['alignment']['suggested_lo']}")
 
-    # --- Add-new button at the bottom ---
-    if st.button("➕ Add Learning Objective"):
-        ss["los"].append({
-            "id": str(uuid.uuid4()),
-            "text": "",
-            "intended_level": "Remember",
-            "alignment": None,
-            "final_text": None,
-            "alignment_sig": None,
-            "generation_sig": None
-        })
-        st.rerun()
+    # --- Add / Import buttons ---
+    add_col, import_col = st.columns([1, 1], vertical_alignment="center")
+    with add_col:
+        if st.button("➕ Add Learning Objective"):
+            ss["los"].append({
+                "id": str(uuid.uuid4()),
+                "text": "",
+                "intended_level": "Remember",
+                "alignment": None,
+                "final_text": None,
+                "alignment_sig": None,
+                "generation_sig": None
+            })
+            st.rerun()
+
+    import_help = " Choose a module from your outline and import its learning objectives"
+    with import_col:
+        if st.button(
+            "📥 Import from Outline",
+            key="import_lo_from_outline",
+            help=import_help,
+            disabled=not has_outline_modules,
+        ):
+            ss["show_lo_import_dialog"] = True
+
+    if ss.get("show_lo_import_dialog"):
+        module_labels = []
+        label_to_index = {}
+        for idx, module in enumerate(outline_modules):
+            title = module.get("moduleTitle") or "Untitled module"
+            label = f"Module {idx + 1}: {title}"
+            module_labels.append(label)
+            label_to_index[label] = idx
+
+        with st.dialog("Import learning objectives"):
+            st.markdown("Select modules from your outline to import their section-level objectives.")
+            selected_labels = st.multiselect(
+                "Modules",
+                options=module_labels,
+                key="lo_import_selection",
+            )
+
+            action_cols = st.columns([1, 1], gap="small")
+            with action_cols[0]:
+                if st.button("Cancel", key="cancel_lo_import"):
+                    ss["show_lo_import_dialog"] = False
+                    ss["lo_import_selection"] = []
+                    st.rerun()
+            with action_cols[1]:
+                if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
+                    for label in selected_labels:
+                        module_idx = label_to_index.get(label)
+                        if module_idx is None:
+                            continue
+                        module = outline_modules[module_idx]
+                        for objective_text in _collect_module_objectives(module):
+                            ss["los"].append({
+                                "id": str(uuid.uuid4()),
+                                "text": objective_text,
+                                "intended_level": "Remember",
+                                "alignment": None,
+                                "final_text": None,
+                                "alignment_sig": None,
+                                "generation_sig": None,
+                            })
+                    ss["show_lo_import_dialog"] = False
+                    ss["lo_import_selection"] = []
+                    ss["lo_import_toast"] = True
+                    st.rerun()
 
     # --- Check All / Accept All buttons ---
     all_btn_cols = st.columns([1, 1])
