@@ -4,8 +4,8 @@
 # Local development environment file
 .env
 
-# Streamlit specific files
-.streamlit/
+# Streamlit secret files
+.streamlit/secrets.toml
 
 # Codespace and vs code settings
 .vscode/
