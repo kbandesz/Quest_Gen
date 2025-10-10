@@ -290,11 +290,12 @@ Investing time upfront in the outline will make the presentation of content more
         with cols[1]:
             st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
     
-    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you provide. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
+    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
-    st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
+    #st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
     files = st.file_uploader(
         "Upload Source Materials (e.g., papers, presentations, notes)",
+        help="Upload any source materials that will help the AI understand the course context and content.",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
         key=f"source_file_uploader_{ss["uploader_key"]}",
@@ -324,34 +325,36 @@ Investing time upfront in the outline will make the presentation of content more
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
     
-    # Display currently uploaded files
-    if ss["course_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
-        #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["course_files"])])
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-        st.markdown(current_files)
+    with st.expander("View uploaded files and extracted text", expanded=False):
+        # Display currently uploaded files
+        if ss["course_files"]:
+            st.caption("Currently uploaded files (To change, use file picker above):")
+            #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["course_files"])])
+            current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
+            st.markdown(current_files)
 
-    # Display token count & preview from session (stable across reruns)
-    st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
-    with st.expander("Preview first 5,000 characters", expanded=False):
-        #st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, key="course_preview_area")
+        # Display token count & preview from session (stable across reruns)
+        st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
+        #with st.expander("Preview first 5,000 characters", expanded=False):
+        st.caption("Preview first 5,000 characters")
         st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
-    st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
+    #st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
     #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
         ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
     
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
-    ss["outline_guidance"] = st.text_area("Additional Guidance for AI (optional)",
+    ss["outline_guidance"] = st.text_area("Additional Guidance for the AI (optional)",
                                     key="outline_guidance_key",
-                                    height=80, max_chars=300, help="blabla", disabled=ss["MOCK_MODE"])
+                                    help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
+                                    height=80, max_chars=300, disabled=ss["MOCK_MODE"])
 
     # --- Generate Outline ---
-    #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-    is_ready = bool(ss.get("course_text"))
+        #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+    is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             _clear_outline_widget_state()
@@ -364,7 +367,8 @@ Investing time upfront in the outline will make the presentation of content more
     if 'generated_outline' in ss:
 
         # Switch between static and editable outline view
-        st.toggle("Editable outline", key="editable_outline", value=False)
+        st.write("")
+        st.toggle("Editable outline", key="editable_outline", value=False, help="Switch between editable and static outline view. In editable mode, you can modify module and section titles, add or remove sections, and edit section-level objectives.")
         # Display the formatted outline
         if ss["editable_outline"]:
             display_editable_outline(ss['generated_outline'])
@@ -406,13 +410,13 @@ Investing time upfront in the outline will make the presentation of content more
 # 2 Upload Course Content
 ################################################
 def render_step_2():
-    help_upload = """**Tip:** You can upload any content that you will use to develop the module.
+    help_upload = """You can upload any content that you will use to develop the module.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
                 presentations, or any other documents that you plan to use for writing the module content."""
     st.header("📂 Upload Module Material", help=help_upload)
 
     files: List[Any] = []
-    upload_col, gap_col, import_col = st.columns([8, 1, 3],vertical_alignment="center")
+    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
     with upload_col:
         files = st.file_uploader(
             "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
@@ -450,16 +454,17 @@ def render_step_2():
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
+    with st.expander("View uploaded files and extracted text", expanded=False):
+        # Display currently uploaded files from the session state (stable across reruns)
+        if ss["module_files"]:
+            st.caption("Currently uploaded files (To change, use file picker above):")
+            current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+            st.markdown(current_files)
 
-    # Display currently uploaded files from the session state (stable across reruns)
-    if ss["module_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
-        st.markdown(current_files)
-
-    # Display token count & preview from session (stable across reruns)
-    st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
-    with st.expander("Preview first 5,000 characters", expanded=False):
+        # Display token count & preview from session (stable across reruns)
+        st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+        #with st.expander("Preview first 5,000 characters", expanded=False):
+        st.caption("Preview first 5,000 characters")
         st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # --- Navigation ---
@@ -536,6 +541,10 @@ def render_step_3():
             ss[lo_text_key] = prev_text
         if lo_level_key not in ss:
             ss[lo_level_key] = prev_level
+        # Seed per-LO question count (default 1)
+        nq_key = f"nq_{lo['id']}"
+        if nq_key not in ss:
+            ss[nq_key] = 1
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         module_sig = ss.get("module_sig", "")
@@ -603,6 +612,7 @@ def render_step_3():
                 if st.button(":x: Delete", key=f"del_{lo['id']}_btn"):
                     ss.pop(lo_text_key, None)
                     ss.pop(lo_level_key, None)
+                    ss.pop(nq_key, None)
                     ss["los"].remove(lo)
                     clear_questions(lo["id"])
                     st.rerun()
@@ -621,8 +631,9 @@ def render_step_3():
     add_col, import_col = st.columns([1, 1], vertical_alignment="center")
     with add_col:
         if st.button("➕ Add Learning Objective"):
+            new_id = str(uuid.uuid4())
             ss["los"].append({
-                "id": str(uuid.uuid4()),
+                "id": new_id,
                 "text": "",
                 "intended_level": "Remember",
                 "alignment": None,
@@ -630,6 +641,8 @@ def render_step_3():
                 "alignment_sig": None,
                 "generation_sig": None
             })
+            # Seed default number of questions for this LO
+            ss.setdefault(f"nq_{new_id}", 1)
             st.rerun()
 
     import_help = " Choose a module from your outline and import its learning objectives"
@@ -643,6 +656,12 @@ def render_step_3():
             ss["show_lo_import_dialog"] = True
 
     if ss.get("show_lo_import_dialog"):
+            # Reset selection before widget is created
+        if ss.get("reset_lo_import_selection"):
+            ss.pop("lo_import_selection", None)
+            ss["reset_lo_import_selection"] = False
+        
+        
         module_labels = []
         label_to_index = {}
         for idx, module in enumerate(outline_modules):
@@ -651,30 +670,41 @@ def render_step_3():
             module_labels.append(label)
             label_to_index[label] = idx
 
-        with st.dialog("Import learning objectives"):
-            st.markdown("Select modules from your outline to import their section-level objectives.")
-            selected_labels = st.multiselect(
-                "Modules",
-                options=module_labels,
-                key="lo_import_selection",
-            )
+        # with st.dialog("Import learning objectives"):
+        #     st.markdown("Select modules from your outline to import their section-level objectives.")
+        #     selected_labels = st.multiselect(
+        #         "Modules",
+        #         options=module_labels,
+        #         key="lo_import_selection",
+        #     )
 
-            action_cols = st.columns([1, 1], gap="small")
-            with action_cols[0]:
-                if st.button("Cancel", key="cancel_lo_import"):
-                    ss["show_lo_import_dialog"] = False
-                    ss["lo_import_selection"] = []
-                    st.rerun()
-            with action_cols[1]:
-                if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
-                    for label in selected_labels:
-                        module_idx = label_to_index.get(label)
-                        if module_idx is None:
-                            continue
-                        module = outline_modules[module_idx]
-                        for objective_text in _collect_module_objectives(module):
+         # Simulate a dialog/modal using a container
+        st.markdown("### Import learning objectives")
+        st.markdown("Select modules from your outline to import their section-level objectives.")
+        selected_labels = st.multiselect(
+            "Modules",
+            options=module_labels,
+            key="lo_import_selection",
+        )
+
+        action_cols = st.columns([1, 1], gap="small")
+        with action_cols[0]:
+            if st.button("Cancel", key="cancel_lo_import"):
+                ss["show_lo_import_dialog"] = False
+                #ss["lo_import_selection"] = []
+                ss["reset_lo_import_selection"] = True
+                st.rerun()
+        with action_cols[1]:
+            if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
+                for label in selected_labels:
+                    module_idx = label_to_index.get(label)
+                    if module_idx is None:
+                        continue
+                    module = outline_modules[module_idx]
+                    for objective_text in _collect_module_objectives(module):
+                            new_id = str(uuid.uuid4())
                             ss["los"].append({
-                                "id": str(uuid.uuid4()),
+                                "id": new_id,
                                 "text": objective_text,
                                 "intended_level": "Remember",
                                 "alignment": None,
@@ -682,10 +712,13 @@ def render_step_3():
                                 "alignment_sig": None,
                                 "generation_sig": None,
                             })
-                    ss["show_lo_import_dialog"] = False
-                    ss["lo_import_selection"] = []
-                    ss["lo_import_toast"] = True
-                    st.rerun()
+                            # Seed default n-questions for imported LO
+                            ss.setdefault(f"nq_{new_id}", 1)
+                ss["show_lo_import_dialog"] = False
+                #ss["lo_import_selection"] = []
+                ss["reset_lo_import_selection"] = True
+                ss["lo_import_toast"] = True
+                st.rerun()
 
     # --- Check All / Accept All buttons ---
     all_btn_cols = st.columns([1, 1])
@@ -733,31 +766,40 @@ def render_step_4():
     # Helper to check if we can run generation
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
+    # Render table: LO text and per-LO number input (default 1)
+    st.markdown("#### Questions per learning objective")
+    header_cols = st.columns([6, 1])
+    header_cols[0].markdown("**Learning objective**")
+    header_cols[1].markdown("**# Qs**")
+    for lo in ss["los"]:
+        nq_key = f"nq_{lo['id']}"
+        if nq_key not in ss:
+            ss[nq_key] = 1
+        lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
+        row_cols = st.columns([6, 1])
+        row_cols[0].markdown(lo_display)
+        # number_input bound to session state key (use key only; Streamlit will populate ss[nq_key])
+        row_cols[1].number_input("", min_value=1, max_value=10, value=ss.get(nq_key, 1), key=nq_key)
 
-    st.select_slider(
-        "Number of questions per LO",
-        options=[1, 2, 3],
-        value=1,
-        key="n_questions",
-    )
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
             clear_questions()
-            # Go over all LOs and generate questions
+            # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
-                payload =   generate_questions(
+                nq = ss.get(f"nq_{lo['id']}", 1)
+                payload = generate_questions(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss["module_text"],
-                    n_questions=ss["n_questions"]
-                    )
+                    n_questions=nq,
+                )
                 ss["questions"][lo["id"]] = payload["questions"]
                 # store signature for question generation
                 lo["generation_sig"] = _sig_generation(
                     lo.get("final_text"),
                     lo["intended_level"],
-                    ss.get("module_sig","")
+                    ss.get("module_sig", "")
                 )
             # After regeneration, update questions_sig and clear stale DOCX
             ss["questions_sig"] = _sig_questions(ss["questions"])
