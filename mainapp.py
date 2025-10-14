@@ -130,9 +130,6 @@ def clear_questions(lo_id: Optional[str] = None) -> None:
         ss.pop("questions_sig", None)
 
     # Clear selections and generated file for question export
-    # for block_to_export in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
-    #     key = f"exp_inc_{block_to_export}"
-    #     ss.pop(key, None)
     ss.pop("docx_file", "")
     ss["include_opts"].clear()
     ss["prev_build_inc_opts"].clear()
@@ -211,7 +208,8 @@ with st.sidebar:
 
     st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_settings_change)
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
-    st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL", on_change=_on_settings_change)
+    st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
+                 disabled=ss["MOCK_MODE"], on_change=_on_settings_change)
 
     # Save/load progress
     save_load_panel()
@@ -262,7 +260,6 @@ Export questions to Microsoft Word
                     # upcoming step: subtle border box (not plain text)
                     with st.container(border=True):
                         st.markdown(step_name)
-
 
     # crisp separation from the rest of the page
     st.divider()
@@ -353,7 +350,7 @@ Investing time upfront in the outline will make the presentation of content more
                                     height=80, max_chars=300, disabled=ss["MOCK_MODE"])
 
     # --- Generate Outline ---
-        #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
+    #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
@@ -476,7 +473,7 @@ def render_step_2():
             st.rerun()
     with cols[1]:
         #is_ready_for_step_3 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-        is_ready_for_step_3 = bool(ss.get("module_text"))
+        is_ready_for_step_3 = bool(ss.get("module_text")) or bool(ss.get("generated_outline"))
         if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_3):
             ss["current_step"] = 3
             st.rerun()
@@ -497,20 +494,21 @@ def render_step_3():
     has_outline_modules = bool(outline_modules)
 
     st.markdown(const.LO_DEF)
-    with st.container(border=True):
-        st.markdown("**Tips for Writing Effective Learning Objectives**")
-        st.markdown("Objectives should be developed with the **_SMART_** criteria in mind: **S**pecific, **M**easurable, **A**chievable, **R**ealistic and **T**ime-bound.")
-        # SMART Criteria Checklist
-        with st.expander("SMART Criteria Checklist", expanded=False):
-            st.markdown(const.LO_WRITING_TIPS["smart_criteria"])
-        
-        # Bloom's Taxonomy reference
-        st.markdown(const.BLOOM_DEF)
-        # Visual reference (expandable pyramid)
-        with st.expander("Bloom's Taxonomy", expanded=False):
-            cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
-            with cols[1]:
-                st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
+    #with st.container(border=True):
+    st.markdown("**Tips for Writing Effective Learning Objectives**")
+    st.markdown("Objectives should be developed with the **_SMART_** criteria in mind: **S**pecific, **M**easurable, **A**chievable, **R**ealistic and **T**ime-bound.")
+    # SMART Criteria Checklist
+    with st.expander("SMART Criteria Checklist", expanded=False):
+        st.markdown(const.LO_WRITING_TIPS["smart_criteria"])
+    
+    # Bloom's Taxonomy reference
+    st.markdown(const.BLOOM_DEF)
+    # Visual reference (expandable pyramid)
+    with st.expander("Bloom's Taxonomy", expanded=False):
+        cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
+        with cols[1]:
+            st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
+    st.write("---")
 
     # --- Helper for finalized visual style ---
     def finalized_style(is_final):
@@ -541,10 +539,6 @@ def render_step_3():
             ss[lo_text_key] = prev_text
         if lo_level_key not in ss:
             ss[lo_level_key] = prev_level
-        # Seed per-LO question count (default 1)
-        nq_key = f"nq_{lo['id']}"
-        if nq_key not in ss:
-            ss[nq_key] = 1
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         module_sig = ss.get("module_sig", "")
@@ -557,13 +551,14 @@ def render_step_3():
             is_final = False
 
         # Container for LO
+        st.write("")
         with st.container(border=True):
-            # --- Visual cue for finalized ---
-            if is_final:
-                st.markdown(
-                    '<div style="background-color:#e6ffe6;border:2px solid #2ecc40;border-radius:6px;padding:0.5em 0.5em 0.5em 0.5em;margin-bottom:0.5em;">'
-                    '<b>Finalized.</b> Click Re-open to edit.'
-                    '</div>', unsafe_allow_html=True)
+            # # --- Visual cue for finalized ---
+            # if is_final:
+            #     st.markdown(
+            #         '<div style="background-color:#e6ffe6;border:2px solid #2ecc40;border-radius:6px;padding:0.5em 0.5em 0.5em 0.5em;margin-bottom:0.5em;">'
+            #         '<b>Finalized.</b> Click Re-open to edit.'
+            #         '</div>', unsafe_allow_html=True)
 
             # --- LO text area ---
             ta = st.text_area(f"**Objective #{i+1}**", key=lo_text_key, disabled=is_final,
@@ -579,9 +574,15 @@ def render_step_3():
                                help="Select the intended Bloom's taxonomy level.",
                                label_visibility="visible")
             lo["intended_level"] = sel
-            st.info(f"**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}", icon="ℹ️")
+            st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
             
-
+            # --- Visual cue for finalized ---            
+            if is_final:
+                st.markdown(
+                    '<div style="background-color:#e6ffe6;border:1px solid #2ecc40;border-radius:6px;padding:0.5em 0.5em 0.5em 0.5em;margin-bottom:0.5em;">'
+                    '<b>Finalized.</b> Click Re-open to edit.'
+                    '</div>', unsafe_allow_html=True)
+            
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
@@ -612,7 +613,7 @@ def render_step_3():
                 if st.button(":x: Delete", key=f"del_{lo['id']}_btn"):
                     ss.pop(lo_text_key, None)
                     ss.pop(lo_level_key, None)
-                    ss.pop(nq_key, None)
+                    #ss.pop(nq_key, None)
                     ss["los"].remove(lo)
                     clear_questions(lo["id"])
                     st.rerun()
@@ -628,6 +629,7 @@ def render_step_3():
                     st.markdown(f"**Suggested re-write:**\n> {lo['alignment']['suggested_lo']}")
 
     # --- Add / Import buttons ---
+    # Add new LO
     add_col, import_col = st.columns([1, 1], vertical_alignment="center")
     with add_col:
         if st.button("➕ Add Learning Objective"):
@@ -641,45 +643,12 @@ def render_step_3():
                 "alignment_sig": None,
                 "generation_sig": None
             })
-            # Seed default number of questions for this LO
-            ss.setdefault(f"nq_{new_id}", 1)
             st.rerun()
-
-    import_help = " Choose a module from your outline and import its learning objectives"
-    with import_col:
-        if st.button(
-            "📥 Import from Outline",
-            key="import_lo_from_outline",
-            help=import_help,
-            disabled=not has_outline_modules,
-        ):
-            ss["show_lo_import_dialog"] = True
-
-    if ss.get("show_lo_import_dialog"):
-            # Reset selection before widget is created
-        if ss.get("reset_lo_import_selection"):
-            ss.pop("lo_import_selection", None)
-            ss["reset_lo_import_selection"] = False
-        
-        
-        module_labels = []
-        label_to_index = {}
-        for idx, module in enumerate(outline_modules):
-            title = module.get("moduleTitle") or "Untitled module"
-            label = f"Module {idx + 1}: {title}"
-            module_labels.append(label)
-            label_to_index[label] = idx
-
-        # with st.dialog("Import learning objectives"):
-        #     st.markdown("Select modules from your outline to import their section-level objectives.")
-        #     selected_labels = st.multiselect(
-        #         "Modules",
-        #         options=module_labels,
-        #         key="lo_import_selection",
-        #     )
-
-         # Simulate a dialog/modal using a container
-        st.markdown("### Import learning objectives")
+###########
+    #Import LOs from Outline
+    # 1) Define the dialog
+    @st.dialog("Import learning objectives", width="large", dismissible=True)
+    def import_lo_dialog(module_labels, label_to_index, outline_modules):
         st.markdown("Select modules from your outline to import their section-level objectives.")
         selected_labels = st.multiselect(
             "Modules",
@@ -687,14 +656,12 @@ def render_step_3():
             key="lo_import_selection",
         )
 
-        action_cols = st.columns([1, 1], gap="small")
-        with action_cols[0]:
+        c1, c2 = st.columns([1, 1])
+        with c1:
             if st.button("Cancel", key="cancel_lo_import"):
-                ss["show_lo_import_dialog"] = False
-                #ss["lo_import_selection"] = []
                 ss["reset_lo_import_selection"] = True
-                st.rerun()
-        with action_cols[1]:
+                st.rerun()  # closes the dialog
+        with c2:
             if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
                 for label in selected_labels:
                     module_idx = label_to_index.get(label)
@@ -702,25 +669,110 @@ def render_step_3():
                         continue
                     module = outline_modules[module_idx]
                     for objective_text in _collect_module_objectives(module):
-                            new_id = str(uuid.uuid4())
-                            ss["los"].append({
-                                "id": new_id,
-                                "text": objective_text,
-                                "intended_level": "Remember",
-                                "alignment": None,
-                                "final_text": None,
-                                "alignment_sig": None,
-                                "generation_sig": None,
-                            })
-                            # Seed default n-questions for imported LO
-                            ss.setdefault(f"nq_{new_id}", 1)
-                ss["show_lo_import_dialog"] = False
-                #ss["lo_import_selection"] = []
+                        new_id = str(uuid.uuid4())
+                        ss["los"].append({
+                            "id": new_id,
+                            "text": objective_text,
+                            "intended_level": "Remember",
+                            "alignment": None,
+                            "final_text": None,
+                            "alignment_sig": None,
+                            "generation_sig": None,
+                        })
                 ss["reset_lo_import_selection"] = True
                 ss["lo_import_toast"] = True
-                st.rerun()
+                st.rerun()  # closes the dialog and updates page
+
+    # 2) Open the dialog from a button
+    import_help = " Choose a module from your outline and import its learning objectives"
+    with import_col:
+        if st.button("📥 Import from Outline", key="import_lo_from_outline",
+                     help=import_help, disabled=not has_outline_modules):
+            # Prepare labels each time dialog is opened
+            module_labels, label_to_index = [], {}
+            for idx, module in enumerate(outline_modules):
+                title = module.get("moduleTitle") or "Untitled module"
+                label = f"Module {idx + 1}: {title}"
+                module_labels.append(label)
+                label_to_index[label] = idx
+
+            # Optional: clear previous selection when reopening
+            if ss.get("reset_lo_import_selection"):
+                ss.pop("lo_import_selection", None)
+                ss["reset_lo_import_selection"] = False
+
+            import_lo_dialog(module_labels, label_to_index, outline_modules)  # <-- shows modal
+
+
+##########
+
+    # import_help = " Choose a module from your outline and import its learning objectives"
+    # with import_col:
+    #     if st.button(
+    #         "📥 Import from Outline",
+    #         key="import_lo_from_outline",
+    #         help=import_help,
+    #         disabled=not has_outline_modules,
+    #     ):
+    #         ss["show_lo_import_dialog"] = True
+
+    # if ss.get("show_lo_import_dialog"):
+    #         # Reset selection before widget is created
+    #     if ss.get("reset_lo_import_selection"):
+    #         ss.pop("lo_import_selection", None)
+    #         ss["reset_lo_import_selection"] = False
+        
+        
+    #     module_labels = []
+    #     label_to_index = {}
+    #     for idx, module in enumerate(outline_modules):
+    #         title = module.get("moduleTitle") or "Untitled module"
+    #         label = f"Module {idx + 1}: {title}"
+    #         module_labels.append(label)
+    #         label_to_index[label] = idx
+
+
+         # Simulate a dialog/modal using a container
+        # st.markdown("### Import learning objectives")
+        # st.markdown("Select modules from your outline to import their section-level objectives.")
+        # selected_labels = st.multiselect(
+        #     "Modules",
+        #     options=module_labels,
+        #     key="lo_import_selection",
+        # )
+
+        # action_cols = st.columns([1, 1], gap="small")
+        # with action_cols[0]:
+        #     if st.button("Cancel", key="cancel_lo_import"):
+        #         ss["show_lo_import_dialog"] = False
+        #         ss["reset_lo_import_selection"] = True
+        #         st.rerun()
+        # with action_cols[1]:
+        #     if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
+        #         for label in selected_labels:
+        #             module_idx = label_to_index.get(label)
+        #             if module_idx is None:
+        #                 continue
+        #             module = outline_modules[module_idx]
+        #             for objective_text in _collect_module_objectives(module):
+        #                     new_id = str(uuid.uuid4())
+        #                     ss["los"].append({
+        #                         "id": new_id,
+        #                         "text": objective_text,
+        #                         "intended_level": "Remember",
+        #                         "alignment": None,
+        #                         "final_text": None,
+        #                         "alignment_sig": None,
+        #                         "generation_sig": None,
+        #                     })
+
+        #         ss["show_lo_import_dialog"] = False
+        #         ss["reset_lo_import_selection"] = True
+        #         ss["lo_import_toast"] = True
+        #         st.rerun()
 
     # --- Check All / Accept All buttons ---
+    st.write("")
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
         if st.button("Check All", type="primary", disabled=not ss["los"]):
@@ -766,20 +818,21 @@ def render_step_4():
     # Helper to check if we can run generation
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
+    
     # Render table: LO text and per-LO number input (default 1)
     st.markdown("#### Questions per learning objective")
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
-    header_cols[1].markdown("**# Qs**")
+    header_cols[1].markdown("**# of Questions**")
     for lo in ss["los"]:
         nq_key = f"nq_{lo['id']}"
         if nq_key not in ss:
-            ss[nq_key] = 1
+            ss[nq_key] = len(ss.get("questions", {}).get(lo["id"], [])) or 1
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
-        # number_input bound to session state key (use key only; Streamlit will populate ss[nq_key])
-        row_cols[1].number_input("", min_value=1, max_value=10, value=ss.get(nq_key, 1), key=nq_key)
+        row_cols[1].number_input("", min_value=1, max_value=10,
+                                 key=nq_key, label_visibility="collapsed")
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
@@ -794,6 +847,7 @@ def render_step_4():
                     ss["module_text"],
                     n_questions=nq,
                 )
+                st.write(payload)
                 ss["questions"][lo["id"]] = payload["questions"]
                 # store signature for question generation
                 lo["generation_sig"] = _sig_generation(
@@ -804,7 +858,34 @@ def render_step_4():
             # After regeneration, update questions_sig and clear stale DOCX
             ss["questions_sig"] = _sig_questions(ss["questions"])
             #ss.pop("docx_file", None)
-    
+####################
+# More sophisticated generation logic: only regenerate if LO or module changed, or n changed
+    # if st.button("Generate", type="primary", disabled=not can_generate(ss)):
+    #     with st.spinner("Generating questions..."):
+    #         # Go over all LOs and generate questions 
+    #         for lo in ss["los"]:
+    #             desired_n = ss.get(f"nq_{lo['id']}", 1)
+    #             existing = ss.get("questions", {}).get(lo["id"], [])
+    #             gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+
+    #             needs_new = (lo.get("generation_sig") != gen_sig) or (len(existing) != desired_n)
+    #             if needs_new:
+    #                 payload = generate_questions(
+    #                     lo.get("final_text"),
+    #                     lo["intended_level"],
+    #                     ss["module_text"],
+    #                     n_questions=desired_n,
+    #                 )
+    #                 ss.setdefault("questions", {})[lo["id"]] = payload["questions"]
+    #                 lo["generation_sig"] = gen_sig
+
+    #         # Invalidate built DOCX after any change
+    #         ss["questions_sig"] = _sig_questions(ss["questions"])
+    #         ss["docx_file"] = ""
+
+
+####################
+
     # Go over all LOs
     for lo in ss["los"]:
         qs=ss["questions"].get(lo["id"],[])
@@ -838,7 +919,7 @@ def render_step_4():
                     q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""),
                                                        key=f"ref_{lo['id']}_{idx}", height=70)
                     q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""),
-                                                          key=f"rat_{lo['id']}_{idx}", height=70)
+                                                          key=f"cograt_{lo['id']}_{idx}", height=70)
 
     # After all widgets have applied edits, detect real changes
     new_q_sig = _sig_questions(ss.get("questions", {}))
