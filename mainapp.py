@@ -847,7 +847,7 @@ def render_step_4():
                     ss["module_text"],
                     n_questions=nq,
                 )
-                st.write(payload)
+
                 ss["questions"][lo["id"]] = payload["questions"]
                 # store signature for question generation
                 lo["generation_sig"] = _sig_generation(
