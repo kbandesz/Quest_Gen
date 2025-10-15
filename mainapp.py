@@ -647,7 +647,7 @@ def render_step_3():
 ###########
     #Import LOs from Outline
     # 1) Define the dialog
-    @st.dialog("Import learning objectives", width="large", dismissible=True)
+    @st.dialog("Import learning objectives", width="large", dismissible=False)
     def import_lo_dialog(module_labels, label_to_index, outline_modules):
         st.markdown("Select modules from your outline to import their section-level objectives.")
         selected_labels = st.multiselect(
