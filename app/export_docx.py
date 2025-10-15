@@ -23,7 +23,7 @@ def build_questions_docx(los:List[dict], questions_by_lo:Dict[str,list], include
     # Default include options (all True)
     if include is None:
         include = {
-            "los": True,
+            "lo": True,
             "bloom": True,
             "answer": True,
             "feedback": True,
@@ -38,7 +38,7 @@ def build_questions_docx(los:List[dict], questions_by_lo:Dict[str,list], include
         level = lo.get("intended_level")
 
         # LO heading
-        if include.get("los", True):
+        if include.get("lo", True):
             doc.add_heading(f"Learning Objective: {final}", level=2)
 
         # Bloom line is italic
