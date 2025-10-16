@@ -1,8 +1,6 @@
 import streamlit as st
 import uuid
 from typing import Dict, Any, Optional, List
-import hashlib
-import json
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
@@ -10,6 +8,17 @@ from app.export_docx import build_questions_docx, build_outline_docx
 from app.display_content import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
+from app.session_state_utils import (
+    sig_alignment,
+    sig_generation,
+    sig_outline,
+    sig_questions,
+    clear_alignment,
+    clear_questions,
+    clear_module_dependent_outputs,
+    apply_module_content,
+    reset_uploaded_content,
+)
 
 # Cached file parsing
 @st.cache_data(show_spinner=False)
@@ -17,47 +26,6 @@ def _extract_cached_text_and_tokens(file_keys, files):
     """Cache extraction results keyed by stable file metadata."""
     return extract_text_and_tokens(files)
 
-
-# Signatures used for detecting changes in user inputs
-def _sig_module(text: str) -> str:
-    return hashlib.sha1((text or "").encode("utf-8")).hexdigest()
-
-def _sig_alignment(lo_text: str, intended_level: str, module_sig: str) -> str:
-    # Alignment depends on original LO text + intended level + course text
-    payload = f"{lo_text}||{intended_level}||{module_sig}"
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) -> str:
-    # Generation depends on final LO text + intended level + module text
-    payload = f"{final_lo_text}||{intended_level}||{module_sig}"
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-
-def _sig_outline(outline: Optional[Dict[str, Any]]) -> str:
-    """Stable signature for the generated outline content."""
-    if not outline:
-        return ""
-    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
-
-def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
-    """Stable signature over all editable question fields."""
-    
-    parts = []
-    # Sort by LO id for stability
-    for lo_id in sorted(questions_by_lo.keys()):
-        qs = questions_by_lo.get(lo_id) or []
-        for qi, q in enumerate(qs):
-            parts.append(f"{lo_id}#{qi}|stem:{q.get('stem','')}")
-            parts.append(f"{lo_id}#{qi}|correct:{q.get('correct_option_id','')}")
-            parts.append(f"{lo_id}#{qi}|contentRef:{q.get('contentReference','')}")
-            parts.append(f"{lo_id}#{qi}|cog:{q.get('cognitive_rationale','')}")
-            # Options in stable order by option id (A,B,C,D)
-            for opt in sorted(q.get('options', []), key=lambda o: o.get('id','')):
-                parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|txt:{opt.get('text','')}")
-                parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|rat:{opt.get('option_rationale','')}")
-    payload = "\n".join(parts)
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 ################################################
 # App setup
@@ -109,70 +77,6 @@ mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _Smarter course design—powered by AI._")
 
-# --------------------------------------------------------------
-# Helpers for clearing derived state
-# --------------------------------------------------------------
-def clear_alignment(lo: Dict) -> None:
-    """Remove alignment-related fields for a learning objective."""
-    lo.pop("alignment", None)
-    lo.pop("final_text", None)
-    lo.pop("alignment_sig", None)
-    lo.pop("generation_sig", None)
-    ss.pop(f"sug_{lo['id']}", None)
-
-
-def clear_questions(lo_id: Optional[str] = None) -> None:
-    """Clear generated questions and dependent artifacts."""
-    if lo_id:
-        ss["questions"].pop(lo_id, None)
-    else:
-        ss["questions"].clear()
-        ss.pop("questions_sig", None)
-
-    # Clear selections and generated file for question export
-    ss.pop("docx_file", "")
-    ss["include_opts"].clear()
-    ss["prev_build_inc_opts"].clear()
-
-
-def clear_module_dependent_outputs() -> None:
-    """Clear all outputs that depend on uploaded module content."""
-    ss["__last_clear_reason__"] = "module_sig_changed"
-    ss["los"].clear()
-    clear_questions()
-
-
-def _apply_module_content(text: str, tokens: int, file_names: List[str]) -> None:
-    """Update session state with new module content and clear dependents if needed."""
-
-    text = text or ""
-    tokens = tokens or 0
-    file_names = file_names or []
-
-    new_mod_sig = _sig_module(text)
-
-    if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
-        st.toast("Module content changed — LOs and questions cleared.")
-        clear_module_dependent_outputs()
-
-    ss["module_files"] = file_names
-    ss["module_text"] = text
-    ss["module_tokens"] = tokens
-    ss["module_sig"] = new_mod_sig
-
-def reset_uploaded_content() -> None:
-    """Remove uploaded module data and reset uploader widget."""
-    ss["course_files"] = []
-    ss["module_files"] = []
-    ss["outline_guidance"] = ""
-    ss.pop("outline_guidance_key", None)
-    ss["course_text"] = ""
-    ss["course_tokens"] = 0
-    ss["module_text"] = ""
-    ss["module_tokens"] = 0
-    ss["module_sig"] = ""
-    ss["uploader_key"] += 1
-
 ################################################
 # Sidebar for settings
 ################################################
@@ -191,15 +95,15 @@ with st.sidebar:
         # If mock mode was toggled, clear everything and go back to Step 1
         if prev_mock != ss["MOCK_MODE"]:
             ss.pop("generated_outline", None)
-            clear_module_dependent_outputs()
-            reset_uploaded_content()
+            clear_module_dependent_outputs(ss)
+            reset_uploaded_content(ss)
             ss["current_step"] = 1
             st.toast("Mock mode changed — cleared all uploaded content, LOs, and LLM output.")
         # If AI model changed, just clear LLM outputs
         else:
             for lo in ss.get("los", []):
-                clear_alignment(lo)
-            clear_questions()
+                clear_alignment(ss, lo)
+            clear_questions(ss)
             st.toast("Model changed — cleared all LLM output.")
         ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
 
@@ -356,7 +260,7 @@ Investing time upfront in the outline will make the presentation of content more
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             _clear_outline_widget_state()
             ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-            ss["outline_sig"] = _sig_outline(ss.get("generated_outline"))
+            ss["outline_sig"] = sig_outline(ss.get("generated_outline"))
             ss["outline_docx_file"] = b""
             ss["outline_doc_sig"] = None
 
@@ -372,7 +276,7 @@ Investing time upfront in the outline will make the presentation of content more
         else:
             display_static_outline(ss['generated_outline'])
 
-        current_outline_sig = _sig_outline(ss.get("generated_outline"))
+        current_outline_sig = sig_outline(ss.get("generated_outline"))
         if ss.get("outline_sig") != current_outline_sig:
             ss["outline_sig"] = current_outline_sig
 
@@ -432,7 +336,7 @@ def render_step_2():
             disabled=import_disabled,
         ):
             course_files = list(ss.get("course_files") or [])
-            _apply_module_content(ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
 
 # --- Process files based on actual content, not metadata ---
     if files:
@@ -446,7 +350,7 @@ def render_step_2():
             st.error(e)
             text, tokens = "", 0
 
-        _apply_module_content(text, tokens, [f.name for f in files])
+        apply_module_content(ss, text, tokens, [f.name for f in files])
 
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
@@ -542,11 +446,11 @@ def render_step_3():
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         module_sig = ss.get("module_sig", "")
-        current_align_sig = _sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
+        current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
         if prev_align_sig and prev_align_sig != current_align_sig:
-            clear_alignment(lo)
-            clear_questions(lo["id"])
+            clear_alignment(ss, lo)
+            clear_questions(ss, lo["id"])
             lo["final_text"] = None
             is_final = False
 
@@ -592,16 +496,16 @@ def render_step_3():
                              ):
                     with st.spinner("Checking alignment..."):
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                        lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
                     lo["final_text"] = lo["text"]
                     # Invalidate questions if needed
-                    current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                    current_gen_sig = sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
                     prev_gen_sig = lo.get("generation_sig")
                     if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                        clear_questions(lo["id"])
+                        clear_questions(ss, lo["id"])
                         lo["generation_sig"] = None
                     st.rerun()
             with btn_cols[2]:
@@ -615,7 +519,7 @@ def render_step_3():
                     ss.pop(lo_level_key, None)
                     #ss.pop(nq_key, None)
                     ss["los"].remove(lo)
-                    clear_questions(lo["id"])
+                    clear_questions(ss, lo["id"])
                     st.rerun()
 
             # --- Alignment result (if available) ---
@@ -779,17 +683,17 @@ def render_step_3():
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                    lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
         if st.button("Accept All", disabled=not ss["los"]):
             for lo in ss["los"]:
                 lo["final_text"] = lo["text"]
                 # Invalidate questions if needed
-                current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                current_gen_sig = sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    clear_questions(lo["id"])
+                    clear_questions(ss, lo["id"])
                     lo["generation_sig"] = None
             st.rerun()
 
@@ -837,7 +741,7 @@ def render_step_4():
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
-            clear_questions()
+            clear_questions(ss)
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
                 nq = ss.get(f"nq_{lo['id']}", 1)
@@ -850,13 +754,13 @@ def render_step_4():
 
                 ss["questions"][lo["id"]] = payload["questions"]
                 # store signature for question generation
-                lo["generation_sig"] = _sig_generation(
+                lo["generation_sig"] = sig_generation(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
             # After regeneration, update questions_sig and clear stale DOCX
-            ss["questions_sig"] = _sig_questions(ss["questions"])
+            ss["questions_sig"] = sig_questions(ss["questions"])
             #ss.pop("docx_file", None)
 ####################
 # More sophisticated generation logic: only regenerate if LO or module changed, or n changed
@@ -866,7 +770,7 @@ def render_step_4():
     #         for lo in ss["los"]:
     #             desired_n = ss.get(f"nq_{lo['id']}", 1)
     #             existing = ss.get("questions", {}).get(lo["id"], [])
-    #             gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+    #             gen_sig = sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
 
     #             needs_new = (lo.get("generation_sig") != gen_sig) or (len(existing) != desired_n)
     #             if needs_new:
@@ -880,7 +784,7 @@ def render_step_4():
     #                 lo["generation_sig"] = gen_sig
 
     #         # Invalidate built DOCX after any change
-    #         ss["questions_sig"] = _sig_questions(ss["questions"])
+    #         ss["questions_sig"] = sig_questions(ss["questions"])
     #         ss["docx_file"] = ""
 
 
@@ -922,7 +826,7 @@ def render_step_4():
                                                           key=f"cograt_{lo['id']}_{idx}", height=70)
 
     # After all widgets have applied edits, detect real changes
-    new_q_sig = _sig_questions(ss.get("questions", {}))
+    new_q_sig = sig_questions(ss.get("questions", {}))
     if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
         # User changed questions → previously built DOCX is now stale
         ss["docx_file"] = "" #None
