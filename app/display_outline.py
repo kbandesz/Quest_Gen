@@ -1,3 +1,5 @@
+"""UI elements to display course outlines (static and editable) from the session state."""
+
 import streamlit as st
 from typing import Dict, Any
 
@@ -6,13 +8,13 @@ ss = st.session_state
 # Helper functions for editable outline rendering
 def _get_outline_node(path_parts):
     """Return the container and final key/index for a dotted outline path."""
-    if "generated_outline" not in ss:
+    if "outline" not in ss:
         raise KeyError("Outline is not available in session state.")
 
     if not path_parts:
         raise ValueError("Path cannot be empty.")
 
-    node: Any = ss["generated_outline"]
+    node: Any = ss["outline"]
     for idx, part in enumerate(path_parts[:-1]):
         next_part = path_parts[idx + 1]
         if isinstance(node, list):
@@ -34,7 +36,7 @@ def _normalize_outline_input(path: str, raw_value: str, existing: Any):
     return raw_value
 
 def _update_outline_value(path: str, widget_key: str):
-    if "generated_outline" not in ss:
+    if "outline" not in ss:
         return
 
     raw_value = ss.get(widget_key, "")

@@ -5,10 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any, Dict, Iterable, List, MutableMapping, Optional
-
+from streamlit.runtime.state import SessionStateProxy
 import streamlit as st
 
-SessionState = MutableMapping[str, Any]
+######## Signature computation helpers ########
+
+def sig_outline(outline: Optional[Dict[str, Any]]) -> str:
+    """Stable signature for generated outline content."""
+    if not outline:
+        return ""
+    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
 
 
 def sig_module(text: Optional[str]) -> str:
@@ -17,23 +24,15 @@ def sig_module(text: Optional[str]) -> str:
 
 
 def sig_alignment(lo_text: str, intended_level: str, module_sig: str) -> str:
-    """Signature capturing inputs that influence alignment checks."""
+    """Signature capturing inputs that influence Bloom alignment checks."""
     payload = f"{lo_text}||{intended_level}||{module_sig}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def sig_generation(final_lo_text: str, intended_level: str, module_sig: str) -> str:
+def sig_question_gen(final_lo_text: str, intended_level: str, module_sig: str) -> str:
     """Signature capturing inputs that influence question generation."""
     payload = f"{final_lo_text}||{intended_level}||{module_sig}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-
-def sig_outline(outline: Optional[Dict[str, Any]]) -> str:
-    """Stable signature for generated outline content."""
-    if not outline:
-        return ""
-    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
 
 
 def sig_questions(questions_by_lo: Dict[str, Iterable[Dict[str, Any]]]) -> str:
@@ -53,8 +52,16 @@ def sig_questions(questions_by_lo: Dict[str, Iterable[Dict[str, Any]]]) -> str:
     payload = "\n".join(parts)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
+####### Session state manipulation helpers ########
 
-def clear_alignment(ss: SessionState, lo: Dict[str, Any]) -> None:
+def clear_outline_widget_state(ss: SessionStateProxy) -> None:
+    """Remove cached widget state tied to a previous outline."""
+    keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
+    for key in keys_to_remove:
+        del ss[key]
+
+
+def clear_alignment(ss: SessionStateProxy, lo: Dict[str, Any]) -> None:
     """Remove alignment-related fields for a learning objective."""
     lo.pop("alignment", None)
     lo.pop("final_text", None)
@@ -64,7 +71,7 @@ def clear_alignment(ss: SessionState, lo: Dict[str, Any]) -> None:
         ss.pop(f"sug_{lo.get('id')}", None)
 
 
-def clear_questions(ss: SessionState, lo_id: Optional[str] = None) -> None:
+def clear_questions(ss: SessionStateProxy, lo_id: Optional[str] = None) -> None:
     """Clear generated questions and dependent artifacts."""
     questions = ss.get("questions")
     if isinstance(questions, MutableMapping):
@@ -92,7 +99,7 @@ def clear_questions(ss: SessionState, lo_id: Optional[str] = None) -> None:
         ss.pop("prev_build_inc_opts", None)
 
 
-def clear_module_dependent_outputs(ss: SessionState) -> None:
+def clear_module_dependent_outputs(ss: SessionStateProxy) -> None:
     """Clear all outputs that depend on uploaded module content."""
     ss["__last_clear_reason__"] = "module_sig_changed"
     los = ss.get("los")
@@ -103,7 +110,7 @@ def clear_module_dependent_outputs(ss: SessionState) -> None:
     clear_questions(ss)
 
 
-def apply_module_content(ss: SessionState, text: Optional[str], tokens: Optional[int], file_names: Optional[List[str]]) -> None:
+def apply_module_content(ss: SessionStateProxy, text: Optional[str], tokens: Optional[int], file_names: Optional[List[str]]) -> None:
     """Update session state with new module content and clear dependents if needed."""
     text = text or ""
     tokens = tokens or 0
@@ -122,7 +129,7 @@ def apply_module_content(ss: SessionState, text: Optional[str], tokens: Optional
     ss["module_sig"] = new_mod_sig
 
 
-def reset_uploaded_content(ss: SessionState) -> None:
+def reset_uploaded_content(ss: SessionStateProxy) -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []

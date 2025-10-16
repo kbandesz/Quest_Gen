@@ -20,7 +20,7 @@ DOMAIN_STATE_KEYS = {
     "course_text",
     "course_tokens",
     "outline_guidance",
-    "generated_outline",
+    "outline",
     "module_files",
     "module_text",
     "module_tokens",
