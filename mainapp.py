@@ -4,7 +4,7 @@ import uuid
 from typing import Dict, Any, List
 
 from app.parse_input_files import extract_text_and_tokens
-from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
+from app.generate_llm_output import generate_outline, check_alignment, generate_questions
 from app.export_docx import build_outline_docx, build_questions_docx
 from app.display_outline import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
@@ -60,11 +60,8 @@ ss.setdefault("outline_sig", None)
 ss.setdefault("outline_doc_sig", None)
 
 ss.setdefault("MOCK_MODE", True)
-ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
+#ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
 ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
-
-# Apply runtime config to generation module on each rerun (current values)
-set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
 
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
@@ -81,34 +78,32 @@ with st.sidebar:
         ss.clear()
         st.rerun()
 
-    # Change handler: apply model/mock and invalidate downstream state
-    def _on_settings_change():
-        prev_mock = ss.get("__prev_mock_mode__", ss["MOCK_MODE"])
-        # apply to generation runtime
-        set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
-
-        # If mock mode was toggled, clear everything and go back to Step 1
-        if prev_mock != ss["MOCK_MODE"]:
-            ss.pop("outline", None)
-            clear_module_dependent_outputs(ss)
-            reset_uploaded_content(ss)
-            ss["current_step"] = 1
-            st.toast("Mock mode changed — cleared all uploaded content, LOs, and LLM output.")
-        # If AI model changed, just clear LLM outputs
-        else:
-            for lo in ss.get("los", []):
-                clear_alignment(ss, lo)
-            clear_questions(ss)
-            st.toast("Model changed — cleared all LLM output.")
-        ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
+    # If mock mode was toggled: confirm and clear everything and go back to Step 1
+    @st.dialog("Confirm Action", dismissible=False, width="small")
+    def _on_mock_mode_change():
+        st.write("This will will clear everything. Are you sure you want to proceed?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Confirm"):
+                # If mock mode was toggled, clear everything and go back to Step 1
+                ss.pop("outline", None)
+                clear_module_dependent_outputs(ss)
+                reset_uploaded_content(ss)
+                ss["current_step"] = 1
+                st.rerun() # Rerun to dismiss the dialog and update the app state
+        with col2:
+            if st.button("Cancel"):
+                #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
+                ss["MOCK_MODE"] = not ss["MOCK_MODE"]
+                st.rerun()
 
     # Change mock mode and model
-    st.markdown("### Runtime Settings")
+    st.markdown("### Settings")
 
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_settings_change)
+    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_mock_mode_change)
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
-                 disabled=ss["MOCK_MODE"], on_change=_on_settings_change)
+                 disabled=ss["MOCK_MODE"])
 
     # Save/load progress
     save_load_panel()
