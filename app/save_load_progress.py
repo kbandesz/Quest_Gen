@@ -20,7 +20,10 @@ DOMAIN_STATE_KEYS = {
     "course_text",
     "course_tokens",
     "outline_guidance",
-    "generated_outline",
+    "outline",
+    "outline_sig",
+    "outline_doc_sig",
+    "outline_docx_file",
     "module_files",
     "module_text",
     "module_tokens",
@@ -31,7 +34,6 @@ DOMAIN_STATE_KEYS = {
     "include_opts",
     "prev_build_inc_opts",
     "docx_file",
-    "n_questions",
 }
 
 

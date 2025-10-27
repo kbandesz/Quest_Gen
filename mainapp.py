@@ -1,63 +1,27 @@
+"""Main UI logic of the BEACON-Design app."""
 import streamlit as st
 import uuid
-from typing import Dict, Any, Optional, List
-import hashlib
-import json
+from typing import Dict, Any, List
 
 from app.parse_input_files import extract_text_and_tokens
-from app.generate_llm_output import generate_outline, check_alignment, generate_questions, set_runtime_config
-from app.export_docx import build_questions_docx, build_outline_docx
-from app.display_content import display_editable_outline, display_static_outline
+from app.generate_llm_output import generate_outline, check_alignment, generate_questions
+from app.export_docx import build_outline_docx, build_questions_docx
+from app.display_outline import display_editable_outline, display_static_outline
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
-
-# Cached file parsing
-@st.cache_data(show_spinner=False)
-def _extract_cached_text_and_tokens(file_keys, files):
-    """Cache extraction results keyed by stable file metadata."""
-    return extract_text_and_tokens(files)
-
-
-# Signatures used for detecting changes in user inputs
-def _sig_module(text: str) -> str:
-    return hashlib.sha1((text or "").encode("utf-8")).hexdigest()
-
-def _sig_alignment(lo_text: str, intended_level: str, module_sig: str) -> str:
-    # Alignment depends on original LO text + intended level + course text
-    payload = f"{lo_text}||{intended_level}||{module_sig}"
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-def _sig_generation(final_lo_text: str, intended_level: str, module_sig: str) -> str:
-    # Generation depends on final LO text + intended level + module text
-    payload = f"{final_lo_text}||{intended_level}||{module_sig}"
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-
-def _sig_outline(outline: Optional[Dict[str, Any]]) -> str:
-    """Stable signature for the generated outline content."""
-    if not outline:
-        return ""
-    serialized = json.dumps(outline, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha1(serialized.encode("utf-8")).hexdigest()
-
-def _sig_questions(questions_by_lo: Dict[str, list]) -> str:
-    """Stable signature over all editable question fields."""
-    
-    parts = []
-    # Sort by LO id for stability
-    for lo_id in sorted(questions_by_lo.keys()):
-        qs = questions_by_lo.get(lo_id) or []
-        for qi, q in enumerate(qs):
-            parts.append(f"{lo_id}#{qi}|stem:{q.get('stem','')}")
-            parts.append(f"{lo_id}#{qi}|correct:{q.get('correct_option_id','')}")
-            parts.append(f"{lo_id}#{qi}|contentRef:{q.get('contentReference','')}")
-            parts.append(f"{lo_id}#{qi}|cog:{q.get('cognitive_rationale','')}")
-            # Options in stable order by option id (A,B,C,D)
-            for opt in sorted(q.get('options', []), key=lambda o: o.get('id','')):
-                parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|txt:{opt.get('text','')}")
-                parts.append(f"{lo_id}#{qi}|opt:{opt.get('id','')}|rat:{opt.get('option_rationale','')}")
-    payload = "\n".join(parts)
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+from app.session_state_utils import (
+    sig_alignment,
+    sig_question_gen,
+    sig_outline,
+    sig_questions,
+    compute_step_readiness,
+    clear_outline_widget_state,
+    clear_alignment,
+    clear_questions,
+    clear_module_dependent_outputs,
+    apply_module_content,
+    reset_uploaded_content,
+)
 
 ################################################
 # App setup
@@ -79,7 +43,6 @@ ss.setdefault("course_tokens", 0)
 ss.setdefault("outline_guidance", "")
 
 ss.setdefault("module_files", [])
-#ss.setdefault("processed_file_keys", None)
 ss.setdefault("module_text", "")
 ss.setdefault("module_tokens", 0)
 ss.setdefault("module_sig", "")
@@ -98,118 +61,54 @@ ss.setdefault("outline_sig", None)
 ss.setdefault("outline_doc_sig", None)
 
 ss.setdefault("MOCK_MODE", True)
-ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
+#ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
 ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 
-# Apply runtime config to generation module on each rerun (current values)
-set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
+ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
 
+
+################################################
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _Smarter course design—powered by AI._")
 
-# --------------------------------------------------------------
-# Helpers for clearing derived state
-# --------------------------------------------------------------
-def clear_alignment(lo: Dict) -> None:
-    """Remove alignment-related fields for a learning objective."""
-    lo.pop("alignment", None)
-    lo.pop("final_text", None)
-    lo.pop("alignment_sig", None)
-    lo.pop("generation_sig", None)
-    ss.pop(f"sug_{lo['id']}", None)
-
-
-def clear_questions(lo_id: Optional[str] = None) -> None:
-    """Clear generated questions and dependent artifacts."""
-    if lo_id:
-        ss["questions"].pop(lo_id, None)
-    else:
-        ss["questions"].clear()
-        ss.pop("questions_sig", None)
-
-    # Clear selections and generated file for question export
-    ss.pop("docx_file", "")
-    ss["include_opts"].clear()
-    ss["prev_build_inc_opts"].clear()
-
-
-def clear_module_dependent_outputs() -> None:
-    """Clear all outputs that depend on uploaded module content."""
-    ss["__last_clear_reason__"] = "module_sig_changed"
-    ss["los"].clear()
-    clear_questions()
-
-
-def _apply_module_content(text: str, tokens: int, file_names: List[str]) -> None:
-    """Update session state with new module content and clear dependents if needed."""
-
-    text = text or ""
-    tokens = tokens or 0
-    file_names = file_names or []
-
-    new_mod_sig = _sig_module(text)
-
-    if ss.get("module_sig") and new_mod_sig != ss["module_sig"]:
-        st.toast("Module content changed — LOs and questions cleared.")
-        clear_module_dependent_outputs()
-
-    ss["module_files"] = file_names
-    ss["module_text"] = text
-    ss["module_tokens"] = tokens
-    ss["module_sig"] = new_mod_sig
-
-def reset_uploaded_content() -> None:
-    """Remove uploaded module data and reset uploader widget."""
-    ss["course_files"] = []
-    ss["module_files"] = []
-    ss["outline_guidance"] = ""
-    ss.pop("outline_guidance_key", None)
-    ss["course_text"] = ""
-    ss["course_tokens"] = 0
-    ss["module_text"] = ""
-    ss["module_tokens"] = 0
-    ss["module_sig"] = ""
-    ss["uploader_key"] += 1
-
 ################################################
 # Sidebar for settings
 ################################################
 with st.sidebar:
+    # Resetting everything and starting over
     if st.button("Reset session"):
         ss["uploader_key"] += 1
         ss.clear()
         st.rerun()
 
-    # Change handler: apply model/mock and invalidate downstream state
-    def _on_settings_change():
-        prev_mock = ss.get("__prev_mock_mode__", ss["MOCK_MODE"])
-        # apply to generation runtime
-        set_runtime_config(ss["MOCK_MODE"], ss["OPENAI_MODEL"])
-
-        # If mock mode was toggled, clear everything and go back to Step 1
-        if prev_mock != ss["MOCK_MODE"]:
-            ss.pop("generated_outline", None)
-            clear_module_dependent_outputs()
-            reset_uploaded_content()
-            ss["current_step"] = 1
-            st.toast("Mock mode changed — cleared all uploaded content, LOs, and LLM output.")
-        # If AI model changed, just clear LLM outputs
-        else:
-            for lo in ss.get("los", []):
-                clear_alignment(lo)
-            clear_questions()
-            st.toast("Model changed — cleared all LLM output.")
-        ss["__prev_mock_mode__"] = ss["MOCK_MODE"]
+    # If mock mode was toggled: confirm and clear everything and go back to Step 1
+    @st.dialog("Confirm Action", dismissible=False, width="small")
+    def _on_mock_mode_change():
+        st.write("This will will clear everything. Are you sure you want to proceed?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Confirm"):
+                # If mock mode was toggled, clear everything and go back to Step 1
+                ss.pop("outline", None)
+                clear_module_dependent_outputs(ss)
+                reset_uploaded_content(ss)
+                ss["current_step"] = 1
+                st.rerun() # Rerun to dismiss the dialog and update the app state
+        with col2:
+            if st.button("Cancel"):
+                #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
+                ss["MOCK_MODE"] = not ss["MOCK_MODE"]
+                st.rerun()
 
     # Change mock mode and model
-    st.markdown("### Runtime Settings")
+    st.markdown("### Settings")
 
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_settings_change)
+    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_mock_mode_change)
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
-                 disabled=ss["MOCK_MODE"], on_change=_on_settings_change)
+                 disabled=ss["MOCK_MODE"])
 
     # Save/load progress
     save_load_panel()
@@ -222,27 +121,26 @@ def render_stepper():
     st.write("")
 
 
-    outline = """
-**📚 1. Outline**  
-Plan your course structure
-"""
-    upload = """
-**📂 2. Upload**  
-Add your module files
-"""
-    LOs = """
-**🎯 3. Objectives**  
-Define and analyze learning objectives
-"""
-    quest_gen = """
-**✍️ 4. Questions**  
-Create questions with AI support
-"""
-    export = """
-**📄 5. Download**  
-Export questions to Microsoft Word
-"""
+    outline = "Plan your course structure"
+    upload = "Add your module files"
+    LOs = "Define and analyze learning objectives"
+    quest_gen = "Create questions with AI support"
+    export = "Export questions to Microsoft Word"
+    
     steps = [outline, upload, LOs, quest_gen, export]
+
+    #############
+    # Short button labels (clickable)
+    step_labels = [
+        "📚 1. Outline",
+        "📂 2a. Upload ->",
+        "🎯 2b. Objectives ->",
+        "✍️ 2c. Questions ->",
+        "📄 2d. Export",
+    ]
+
+
+    #########
 
     # wrap the whole stepper in a bordered "card"
     with st.container(border=True):
@@ -250,6 +148,13 @@ Export questions to Microsoft Word
         cols = st.columns(len(steps), gap="medium")
         for i, (col, step_name) in enumerate(zip(cols, steps)):
             with col:
+                # Clickable button to navigate directly to the step
+                #red, orange, yellow, green, blue, violet, gray/grey, rainbow,
+                if st.button(f"**{step_labels[i]}**", type="tertiary",
+                             disabled=not ss["is_ready_for_step"][i+1], key=f"step_btn_{i+1}"):
+                    ss["current_step"] = i + 1
+                    st.rerun()
+                # Description + Visual indication of current/completed/upcoming steps
                 if i + 1 == ss["current_step"]:
                     # active step: prominent info callout
                     st.info(step_name)
@@ -258,24 +163,17 @@ Export questions to Microsoft Word
                     st.success(step_name)
                 else:
                     # upcoming step: subtle border box (not plain text)
-                    with st.container(border=True):
-                        st.markdown(step_name)
+                    #with st.container(border=True):
+                    st.markdown(f":grey[{step_name}]")
 
     # crisp separation from the rest of the page
-    st.divider()
-
+    #st.divider()
 
 ################################################
 # 1 Course Outline
 ################################################
 def render_step_1():
-    st.header("📚 Course Structure")
-
-    def _clear_outline_widget_state() -> None:
-        """Remove cached widget state tied to a previous outline."""
-        keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
-        for key in keys_to_remove:
-            del ss[key]
+    st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
@@ -289,9 +187,8 @@ Investing time upfront in the outline will make the presentation of content more
     
     st.markdown("This application can provide you AI-support to design a course outline based on any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
-    #st.markdown("#### Upload any source materials that will help AI understand the course context and content.")
     files = st.file_uploader(
-        "Upload Source Materials (e.g., papers, presentations, notes)",
+        "**Upload Source Materials (e.g., papers, presentations, notes)**",
         help="Upload any source materials that will help the AI understand the course context and content.",
         type=["pdf","docx","pptx","txt"],
         accept_multiple_files=True,
@@ -310,7 +207,7 @@ Investing time upfront in the outline will make the presentation of content more
     if files:
         with st.spinner("Extracting text. Please wait..."):
             try:
-                text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
+                text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
             except Exception as e:
                 st.error(e)
                 text, tokens = "", 0
@@ -322,29 +219,26 @@ Investing time upfront in the outline will make the presentation of content more
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
     
-    with st.expander("View uploaded files and extracted text", expanded=False):
+    with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
         # Display currently uploaded files
         if ss["course_files"]:
             st.caption("Currently uploaded files (To change, use file picker above):")
-            #current_files = "\n".join([f"{i+1}. {f.name}" for i, f in enumerate(ss["course_files"])])
             current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
             st.markdown(current_files)
 
         # Display token count & preview from session (stable across reruns)
         st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
-        #with st.expander("Preview first 5,000 characters", expanded=False):
         st.caption("Preview first 5,000 characters")
         st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
-    #st.markdown("#### Enter any guidance for the AI to consider when generating the outline.")
     #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
         ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
     
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
-    ss["outline_guidance"] = st.text_area("Additional Guidance for the AI (optional)",
+    ss["outline_guidance"] = st.text_area("**Additional Guidance for the AI (optional)**",
                                     key="outline_guidance_key",
                                     help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
                                     height=80, max_chars=300, disabled=ss["MOCK_MODE"])
@@ -354,34 +248,36 @@ Investing time upfront in the outline will make the presentation of content more
     is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
-            _clear_outline_widget_state()
-            ss['generated_outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-            ss["outline_sig"] = _sig_outline(ss.get("generated_outline"))
+            clear_outline_widget_state(ss)
+            ss['outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
+            ss["outline_sig"] = sig_outline(ss.get("outline"))
             ss["outline_docx_file"] = b""
             ss["outline_doc_sig"] = None
+            st.rerun()
 
-    # --- Display Output ---
-    if 'generated_outline' in ss:
+    # --- Display/Edit/Export Output ---
+    if 'outline' in ss:
 
         # Switch between static and editable outline view
         st.write("")
         st.toggle("Editable outline", key="editable_outline", value=False, help="Switch between editable and static outline view. In editable mode, you can modify module and section titles, add or remove sections, and edit section-level objectives.")
         # Display the formatted outline
         if ss["editable_outline"]:
-            display_editable_outline(ss['generated_outline'])
+            display_editable_outline(ss['outline'])
         else:
-            display_static_outline(ss['generated_outline'])
+            display_static_outline(ss['outline'])
 
-        current_outline_sig = _sig_outline(ss.get("generated_outline"))
+        current_outline_sig = sig_outline(ss.get("outline"))
         if ss.get("outline_sig") != current_outline_sig:
             ss["outline_sig"] = current_outline_sig
 
+        # Export outline to DOCX
         st.markdown("---")
         st.markdown("#### Export outline")
         cols = st.columns([1, 1])
         with cols[0]:
             if st.button("Build outline DOCX"):
-                ss["outline_docx_file"] = build_outline_docx(ss["generated_outline"])
+                ss["outline_docx_file"] = build_outline_docx(ss["outline"])
                 ss["outline_doc_sig"] = current_outline_sig
         with cols[1]:
             doc_ready = bool(ss.get("outline_docx_file")) and ss.get("outline_doc_sig") == current_outline_sig
@@ -400,7 +296,7 @@ Investing time upfront in the outline will make the presentation of content more
 
     # --- Navigation ---
     st.divider()
-    if st.button("Next: Module level planning →"):
+    if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
         ss["current_step"] = 2
         st.rerun()
 ################################################
@@ -432,21 +328,27 @@ def render_step_2():
             disabled=import_disabled,
         ):
             course_files = list(ss.get("course_files") or [])
-            _apply_module_content(ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            st.rerun()
 
 # --- Process files based on actual content, not metadata ---
     if files:
         # Build cache key for current files
         current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
 
-        # Call the cached extractor
+        # Call the extractor (it will use Streamlit cache if file_keys is provided)
         try:
-            text, tokens = _extract_cached_text_and_tokens(current_file_keys, files)
+            text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
         except Exception as e:
             st.error(e)
             text, tokens = "", 0
 
-        _apply_module_content(text, tokens, [f.name for f in files])
+        prev_module_text = ss.get("module_text", "")
+        apply_module_content(ss, text, tokens, [f.name for f in files])
+        
+        # Rerun if module content changed to update step readiness
+        if ss.get("module_text", "") != prev_module_text:
+            st.rerun()
 
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
@@ -460,7 +362,6 @@ def render_step_2():
 
         # Display token count & preview from session (stable across reruns)
         st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
-        #with st.expander("Preview first 5,000 characters", expanded=False):
         st.caption("Preview first 5,000 characters")
         st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
@@ -472,9 +373,7 @@ def render_step_2():
             ss["current_step"] = 1
             st.rerun()
     with cols[1]:
-        #is_ready_for_step_3 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-        is_ready_for_step_3 = bool(ss.get("module_text")) or bool(ss.get("generated_outline"))
-        if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_3):
+        if st.button("Next: Define Objectives →", disabled=not ss["is_ready_for_step"][3]):
             ss["current_step"] = 3
             st.rerun()
 
@@ -490,11 +389,10 @@ def render_step_3():
     if ss.pop("lo_import_toast", False):
         st.toast("Learning objectives imported. Don't forget to set Bloom levels for further analysis.")
 
-    outline_modules = ((ss.get("generated_outline") or {}).get("modules") or [])
+    outline_modules = ((ss.get("outline") or {}).get("modules") or [])
     has_outline_modules = bool(outline_modules)
 
     st.markdown(const.LO_DEF)
-    #with st.container(border=True):
     st.markdown("**Tips for Writing Effective Learning Objectives**")
     st.markdown("Objectives should be developed with the **_SMART_** criteria in mind: **S**pecific, **M**easurable, **A**chievable, **R**ealistic and **T**ime-bound.")
     # SMART Criteria Checklist
@@ -510,20 +408,6 @@ def render_step_3():
             st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
     st.write("---")
 
-    # --- Helper for finalized visual style ---
-    def finalized_style(is_final):
-        if is_final:
-            return "background-color: #e6ffe6; border: 2px solid #2ecc40; border-radius: 6px;"
-        return ""
-
-    def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
-        collected: List[str] = []
-        for section in module.get("sections", []) or []:
-            for objective in section.get("sectionLevelObjectives", []) or []:
-                text = (objective or "").strip()
-                if text:
-                    collected.append(text)
-        return collected
 
     # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
@@ -542,23 +426,17 @@ def render_step_3():
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         module_sig = ss.get("module_sig", "")
-        current_align_sig = _sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
+        current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
         if prev_align_sig and prev_align_sig != current_align_sig:
-            clear_alignment(lo)
-            clear_questions(lo["id"])
+            clear_alignment(ss, lo)
+            clear_questions(ss, lo["id"])
             lo["final_text"] = None
             is_final = False
 
         # Container for LO
         st.write("")
         with st.container(border=True):
-            # # --- Visual cue for finalized ---
-            # if is_final:
-            #     st.markdown(
-            #         '<div style="background-color:#e6ffe6;border:2px solid #2ecc40;border-radius:6px;padding:0.5em 0.5em 0.5em 0.5em;margin-bottom:0.5em;">'
-            #         '<b>Finalized.</b> Click Re-open to edit.'
-            #         '</div>', unsafe_allow_html=True)
 
             # --- LO text area ---
             ta = st.text_area(f"**Objective #{i+1}**", key=lo_text_key, disabled=is_final,
@@ -592,16 +470,16 @@ def render_step_3():
                              ):
                     with st.spinner("Checking alignment..."):
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                        lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
                     lo["final_text"] = lo["text"]
                     # Invalidate questions if needed
-                    current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                    current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
                     prev_gen_sig = lo.get("generation_sig")
                     if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                        clear_questions(lo["id"])
+                        clear_questions(ss, lo["id"])
                         lo["generation_sig"] = None
                     st.rerun()
             with btn_cols[2]:
@@ -615,7 +493,7 @@ def render_step_3():
                     ss.pop(lo_level_key, None)
                     #ss.pop(nq_key, None)
                     ss["los"].remove(lo)
-                    clear_questions(lo["id"])
+                    clear_questions(ss, lo["id"])
                     st.rerun()
 
             # --- Alignment result (if available) ---
@@ -629,8 +507,9 @@ def render_step_3():
                     st.markdown(f"**Suggested re-write:**\n> {lo['alignment']['suggested_lo']}")
 
     # --- Add / Import buttons ---
-    # Add new LO
     add_col, import_col = st.columns([1, 1], vertical_alignment="center")
+
+    # Add new LO
     with add_col:
         if st.button("➕ Add Learning Objective"):
             new_id = str(uuid.uuid4())
@@ -644,8 +523,17 @@ def render_step_3():
                 "generation_sig": None
             })
             st.rerun()
-###########
+
     #Import LOs from Outline
+    def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
+        collected: List[str] = []
+        for section in module.get("sections", []) or []:
+            for objective in section.get("sectionLevelObjectives", []) or []:
+                text = (objective or "").strip()
+                if text:
+                    collected.append(text)
+        return collected
+    
     # 1) Define the dialog
     @st.dialog("Import learning objectives", width="large", dismissible=False)
     def import_lo_dialog(module_labels, label_to_index, outline_modules):
@@ -655,6 +543,16 @@ def render_step_3():
             options=module_labels,
             key="lo_import_selection",
         )
+        
+        def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
+            """Extract all section-level objectives from a module."""
+            collected: List[str] = []
+            for section in module.get("sections", []) or []:
+                for objective in section.get("sectionLevelObjectives", []) or []:
+                    text = (objective or "").strip()
+                    if text:
+                        collected.append(text)
+            return collected
 
         c1, c2 = st.columns([1, 1])
         with c1:
@@ -696,80 +594,13 @@ def render_step_3():
                 module_labels.append(label)
                 label_to_index[label] = idx
 
-            # Optional: clear previous selection when reopening
+            # Clear previous selection when reopening
             if ss.get("reset_lo_import_selection"):
                 ss.pop("lo_import_selection", None)
                 ss["reset_lo_import_selection"] = False
 
             import_lo_dialog(module_labels, label_to_index, outline_modules)  # <-- shows modal
 
-
-##########
-
-    # import_help = " Choose a module from your outline and import its learning objectives"
-    # with import_col:
-    #     if st.button(
-    #         "📥 Import from Outline",
-    #         key="import_lo_from_outline",
-    #         help=import_help,
-    #         disabled=not has_outline_modules,
-    #     ):
-    #         ss["show_lo_import_dialog"] = True
-
-    # if ss.get("show_lo_import_dialog"):
-    #         # Reset selection before widget is created
-    #     if ss.get("reset_lo_import_selection"):
-    #         ss.pop("lo_import_selection", None)
-    #         ss["reset_lo_import_selection"] = False
-        
-        
-    #     module_labels = []
-    #     label_to_index = {}
-    #     for idx, module in enumerate(outline_modules):
-    #         title = module.get("moduleTitle") or "Untitled module"
-    #         label = f"Module {idx + 1}: {title}"
-    #         module_labels.append(label)
-    #         label_to_index[label] = idx
-
-
-         # Simulate a dialog/modal using a container
-        # st.markdown("### Import learning objectives")
-        # st.markdown("Select modules from your outline to import their section-level objectives.")
-        # selected_labels = st.multiselect(
-        #     "Modules",
-        #     options=module_labels,
-        #     key="lo_import_selection",
-        # )
-
-        # action_cols = st.columns([1, 1], gap="small")
-        # with action_cols[0]:
-        #     if st.button("Cancel", key="cancel_lo_import"):
-        #         ss["show_lo_import_dialog"] = False
-        #         ss["reset_lo_import_selection"] = True
-        #         st.rerun()
-        # with action_cols[1]:
-        #     if st.button("OK", key="confirm_lo_import", type="primary", disabled=not selected_labels):
-        #         for label in selected_labels:
-        #             module_idx = label_to_index.get(label)
-        #             if module_idx is None:
-        #                 continue
-        #             module = outline_modules[module_idx]
-        #             for objective_text in _collect_module_objectives(module):
-        #                     new_id = str(uuid.uuid4())
-        #                     ss["los"].append({
-        #                         "id": new_id,
-        #                         "text": objective_text,
-        #                         "intended_level": "Remember",
-        #                         "alignment": None,
-        #                         "final_text": None,
-        #                         "alignment_sig": None,
-        #                         "generation_sig": None,
-        #                     })
-
-        #         ss["show_lo_import_dialog"] = False
-        #         ss["reset_lo_import_selection"] = True
-        #         ss["lo_import_toast"] = True
-        #         st.rerun()
 
     # --- Check All / Accept All buttons ---
     st.write("")
@@ -779,17 +610,17 @@ def render_step_3():
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                    lo["alignment_sig"] = _sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
         if st.button("Accept All", disabled=not ss["los"]):
             for lo in ss["los"]:
                 lo["final_text"] = lo["text"]
                 # Invalidate questions if needed
-                current_gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
                 prev_gen_sig = lo.get("generation_sig")
                 if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    clear_questions(lo["id"])
+                    clear_questions(ss, lo["id"])
                     lo["generation_sig"] = None
             st.rerun()
 
@@ -801,11 +632,7 @@ def render_step_3():
             ss["current_step"] = 2
             st.rerun()
     with cols[1]:
-        def all_los_finalized():
-            if not ss.get("los"):
-                return False
-            return all(lo.get("final_text") for lo in ss["los"])
-        if st.button("Next: Generate Questions →", disabled=not all_los_finalized()):
+        if st.button("Next: Generate Questions →", disabled=not ss["is_ready_for_step"][4]):
             ss["current_step"] = 4
             st.rerun()
 
@@ -837,7 +664,7 @@ def render_step_4():
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
-            clear_questions()
+            clear_questions(ss)
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
                 nq = ss.get(f"nq_{lo['id']}", 1)
@@ -850,41 +677,15 @@ def render_step_4():
 
                 ss["questions"][lo["id"]] = payload["questions"]
                 # store signature for question generation
-                lo["generation_sig"] = _sig_generation(
+                lo["generation_sig"] = sig_question_gen(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
-            # After regeneration, update questions_sig and clear stale DOCX
-            ss["questions_sig"] = _sig_questions(ss["questions"])
-            #ss.pop("docx_file", None)
-####################
-# More sophisticated generation logic: only regenerate if LO or module changed, or n changed
-    # if st.button("Generate", type="primary", disabled=not can_generate(ss)):
-    #     with st.spinner("Generating questions..."):
-    #         # Go over all LOs and generate questions 
-    #         for lo in ss["los"]:
-    #             desired_n = ss.get(f"nq_{lo['id']}", 1)
-    #             existing = ss.get("questions", {}).get(lo["id"], [])
-    #             gen_sig = _sig_generation(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+            # After regeneration, update questions_sig
+            ss["questions_sig"] = sig_questions(ss["questions"])
+            st.rerun()
 
-    #             needs_new = (lo.get("generation_sig") != gen_sig) or (len(existing) != desired_n)
-    #             if needs_new:
-    #                 payload = generate_questions(
-    #                     lo.get("final_text"),
-    #                     lo["intended_level"],
-    #                     ss["module_text"],
-    #                     n_questions=desired_n,
-    #                 )
-    #                 ss.setdefault("questions", {})[lo["id"]] = payload["questions"]
-    #                 lo["generation_sig"] = gen_sig
-
-    #         # Invalidate built DOCX after any change
-    #         ss["questions_sig"] = _sig_questions(ss["questions"])
-    #         ss["docx_file"] = ""
-
-
-####################
 
     # Go over all LOs
     for lo in ss["los"]:
@@ -922,7 +723,7 @@ def render_step_4():
                                                           key=f"cograt_{lo['id']}_{idx}", height=70)
 
     # After all widgets have applied edits, detect real changes
-    new_q_sig = _sig_questions(ss.get("questions", {}))
+    new_q_sig = sig_questions(ss.get("questions", {}))
     if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
         # User changed questions → previously built DOCX is now stale
         ss["docx_file"] = "" #None
@@ -936,8 +737,7 @@ def render_step_4():
             ss["current_step"] = 3
             st.rerun()
     with cols[1]:
-        is_ready_for_step_5 = bool(ss.get("questions"))
-        if st.button("Next: Export →", disabled=not is_ready_for_step_5):
+        if st.button("Next: Export →", disabled=not ss["is_ready_for_step"][5]):
             ss["current_step"] = 5
             st.rerun()
     
@@ -1003,25 +803,15 @@ def render_step_5():
     
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Generate Questions"):
-            ss["current_step"] = 4
-            st.rerun()
-    with cols[1]:
-        if st.button("✨ Start Over"):
-            # Preserve settings from sidebar
-            mock_mode = ss.get("MOCK_MODE", True)
-            model = ss.get("OPENAI_MODEL", "gpt-4.1-nano")
-            ss.clear()
-            ss["MOCK_MODE"] = mock_mode
-            ss["OPENAI_MODEL"] = model
-            ss["current_step"] = 1
-            st.rerun()
+    if st.button("← Back: Generate Questions"):
+        ss["current_step"] = 4
+        st.rerun()
 
 ################################################
 # Main application router
 ################################################
+
+compute_step_readiness(ss)
 render_stepper()
 if ss["current_step"] == 1:
     render_step_1()

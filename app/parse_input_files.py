@@ -1,6 +1,6 @@
 import io
 import re
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Optional
 from pypdf import PdfReader
 import mammoth  # for docx to text
 from pptx import Presentation  # for pptx to text (python-pptx)
@@ -84,24 +84,53 @@ def _extract_single(uploaded_file) -> str:
     except Exception:
         raise ValueError(f"Failed to parse '{uploaded_file.name}': The file may be corrupted, password-protected, or in an unsupported format.")
 
-def extract_text_and_tokens(uploaded_files: Union[List, object]) -> Tuple[str, int]:
+def extract_text_and_tokens(uploaded_files: Union[List, object], file_keys: Optional[tuple] = None) -> Tuple[str, int]:
     """
     Accepts a single uploaded file or a list of files.
     Returns a single combined text and a token estimate.
+
+    If `file_keys` (a stable metadata tuple) is provided, results will be cached
+    using Streamlit's `st.cache_data`. `file_keys` should be a tuple derived
+    from the uploaded file metadata (for example: (name, size, last_modified)).
+    If Streamlit is not available or `file_keys` is None, this function runs
+    the extraction uncached.
     """
+    # Quick path for empty input
     if not uploaded_files:
         return "", 0
 
     # Support both single-file and multi-file callers
     files = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
 
-    # Combine in the order provided, with a clear separator between files
-    parts: List[str] = []
-    for f in files:
-        parts.append(f"<{f.name}>\n\n{_extract_single(f)}\n\n</{f.name}>")
-    combined = ("\n\n----- FILE BREAK -----\n\n").join(p for p in parts if p)
+    # Internal uncached implementation
+    def _do_extract(files_list: List) -> Tuple[str, int]:
+        parts: List[str] = []
+        for f in files_list:
+            parts.append(f"<{f.name}>\n\n{_extract_single(f)}\n\n</{f.name}>")
+        combined = ("\n\n----- FILE BREAK -----\n\n").join(p for p in parts if p)
 
-    # Get the encoding for a gpt-4 model
-    encoding = tiktoken.get_encoding("o200k_base")  # same as gpt-4o
-    tokens = len(encoding.encode(combined))
-    return combined, tokens
+        # Get the encoding for a gpt-4 model
+        encoding = tiktoken.get_encoding("o200k_base")  # same as gpt-4o
+        tokens = len(encoding.encode(combined))
+        return combined, tokens
+
+    # If a cache key is provided, use Streamlit's cache. Import lazily so this
+    # module can be used outside of Streamlit in tests.
+    if file_keys is not None:
+        try:
+            import streamlit as st
+
+            @st.cache_data(show_spinner=False)
+            def _cached_extract(files_list, cached_key):
+                # cached_key exists only to form the cache key; files_list is the
+                # actual data to process. We avoid relying on Streamlit to hash
+                # file objects by using a stable key param.
+                return _do_extract(files_list)
+
+            return _cached_extract(files, file_keys)
+        except Exception:
+            # If Streamlit isn't available or caching fails, fall back to
+            # uncached extraction.
+            return _do_extract(files)
+    else:
+        return _do_extract(files)
