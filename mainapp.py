@@ -14,6 +14,7 @@ from app.session_state_utils import (
     sig_question_gen,
     sig_outline,
     sig_questions,
+    compute_step_readiness,
     clear_outline_widget_state,
     clear_alignment,
     clear_questions,
@@ -63,6 +64,10 @@ ss.setdefault("MOCK_MODE", True)
 #ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
 ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
 
+ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
+
+
+################################################
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
@@ -116,27 +121,26 @@ def render_stepper():
     st.write("")
 
 
-    outline = """
-**📚 1. Outline**  
-Plan your course structure
-"""
-    upload = """
-**📂 2. Upload**  
-Add your module files
-"""
-    LOs = """
-**🎯 3. Objectives**  
-Define and analyze learning objectives
-"""
-    quest_gen = """
-**✍️ 4. Questions**  
-Create questions with AI support
-"""
-    export = """
-**📄 5. Download**  
-Export questions to Microsoft Word
-"""
+    outline = "Plan your course structure"
+    upload = "Add your module files"
+    LOs = "Define and analyze learning objectives"
+    quest_gen = "Create questions with AI support"
+    export = "Export questions to Microsoft Word"
+    
     steps = [outline, upload, LOs, quest_gen, export]
+
+    #############
+    # Short button labels (clickable)
+    step_labels = [
+        "📚 1. Outline",
+        "📂 2a. Upload ->",
+        "🎯 2b. Objectives ->",
+        "✍️ 2c. Questions ->",
+        "📄 2d. Export",
+    ]
+
+
+    #########
 
     # wrap the whole stepper in a bordered "card"
     with st.container(border=True):
@@ -144,6 +148,13 @@ Export questions to Microsoft Word
         cols = st.columns(len(steps), gap="medium")
         for i, (col, step_name) in enumerate(zip(cols, steps)):
             with col:
+                # Clickable button to navigate directly to the step
+                #red, orange, yellow, green, blue, violet, gray/grey, rainbow,
+                if st.button(f"**{step_labels[i]}**", type="tertiary",
+                             disabled=not ss["is_ready_for_step"][i+1], key=f"step_btn_{i+1}"):
+                    ss["current_step"] = i + 1
+                    st.rerun()
+                # Description + Visual indication of current/completed/upcoming steps
                 if i + 1 == ss["current_step"]:
                     # active step: prominent info callout
                     st.info(step_name)
@@ -152,17 +163,17 @@ Export questions to Microsoft Word
                     st.success(step_name)
                 else:
                     # upcoming step: subtle border box (not plain text)
-                    with st.container(border=True):
-                        st.markdown(step_name)
+                    #with st.container(border=True):
+                    st.markdown(f":grey[{step_name}]")
 
     # crisp separation from the rest of the page
-    st.divider()
+    #st.divider()
 
 ################################################
 # 1 Course Outline
 ################################################
 def render_step_1():
-    st.header("📚 Course Structure")
+    st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
@@ -242,6 +253,7 @@ Investing time upfront in the outline will make the presentation of content more
             ss["outline_sig"] = sig_outline(ss.get("outline"))
             ss["outline_docx_file"] = b""
             ss["outline_doc_sig"] = None
+            st.rerun()
 
     # --- Display/Edit/Export Output ---
     if 'outline' in ss:
@@ -284,7 +296,7 @@ Investing time upfront in the outline will make the presentation of content more
 
     # --- Navigation ---
     st.divider()
-    if st.button("Next: Module level planning →"):
+    if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
         ss["current_step"] = 2
         st.rerun()
 ################################################
@@ -317,6 +329,7 @@ def render_step_2():
         ):
             course_files = list(ss.get("course_files") or [])
             apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            st.rerun()
 
 # --- Process files based on actual content, not metadata ---
     if files:
@@ -330,7 +343,12 @@ def render_step_2():
             st.error(e)
             text, tokens = "", 0
 
+        prev_module_text = ss.get("module_text", "")
         apply_module_content(ss, text, tokens, [f.name for f in files])
+        
+        # Rerun if module content changed to update step readiness
+        if ss.get("module_text", "") != prev_module_text:
+            st.rerun()
 
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
@@ -355,9 +373,7 @@ def render_step_2():
             ss["current_step"] = 1
             st.rerun()
     with cols[1]:
-        #is_ready_for_step_3 = bool(ss.get("module_text")) and ss.get("module_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-        is_ready_for_step_3 = bool(ss.get("module_text")) or bool(ss.get("outline"))
-        if st.button("Next: Define Objectives →", disabled=not is_ready_for_step_3):
+        if st.button("Next: Define Objectives →", disabled=not ss["is_ready_for_step"][3]):
             ss["current_step"] = 3
             st.rerun()
 
@@ -616,11 +632,7 @@ def render_step_3():
             ss["current_step"] = 2
             st.rerun()
     with cols[1]:
-        def all_los_finalized():
-            if not ss.get("los"):
-                return False
-            return all(lo.get("final_text") for lo in ss["los"])
-        if st.button("Next: Generate Questions →", disabled=not all_los_finalized()):
+        if st.button("Next: Generate Questions →", disabled=not ss["is_ready_for_step"][4]):
             ss["current_step"] = 4
             st.rerun()
 
@@ -670,9 +682,9 @@ def render_step_4():
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
-            # After regeneration, update questions_sig and clear stale DOCX
+            # After regeneration, update questions_sig
             ss["questions_sig"] = sig_questions(ss["questions"])
-            #ss.pop("docx_file", None)
+            st.rerun()
 
 
     # Go over all LOs
@@ -725,8 +737,7 @@ def render_step_4():
             ss["current_step"] = 3
             st.rerun()
     with cols[1]:
-        is_ready_for_step_5 = bool(ss.get("questions"))
-        if st.button("Next: Export →", disabled=not is_ready_for_step_5):
+        if st.button("Next: Export →", disabled=not ss["is_ready_for_step"][5]):
             ss["current_step"] = 5
             st.rerun()
     
@@ -792,25 +803,15 @@ def render_step_5():
     
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Generate Questions"):
-            ss["current_step"] = 4
-            st.rerun()
-    with cols[1]:
-        if st.button("✨ Start Over"):
-            # Preserve settings from sidebar
-            mock_mode = ss.get("MOCK_MODE", True)
-            model = ss.get("OPENAI_MODEL", "gpt-4.1-nano")
-            ss.clear()
-            ss["MOCK_MODE"] = mock_mode
-            ss["OPENAI_MODEL"] = model
-            ss["current_step"] = 1
-            st.rerun()
+    if st.button("← Back: Generate Questions"):
+        ss["current_step"] = 4
+        st.rerun()
 
 ################################################
 # Main application router
 ################################################
+
+compute_step_readiness(ss)
 render_stepper()
 if ss["current_step"] == 1:
     render_step_1()

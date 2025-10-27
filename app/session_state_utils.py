@@ -52,6 +52,32 @@ def sig_questions(questions_by_lo: Dict[str, Iterable[Dict[str, Any]]]) -> str:
     payload = "\n".join(parts)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
+####### Navigation helpers ########
+def compute_step_readiness(ss: SessionStateProxy) -> None:
+    """Compute baseline readiness for each step from session state before rendering the stepper.
+    This ensures the top stepper reflects current state even though it's rendered before step content.
+    """
+    # Ensure list shape (index 0 unused; steps 1..5 use indices 1..5)
+    if "is_ready_for_step" not in ss or not isinstance(ss["is_ready_for_step"], list) or len(ss["is_ready_for_step"]) < 6:
+        ss["is_ready_for_step"] = [True]*3 + [False]*3
+
+    # Step 1 is always reachable
+    ss["is_ready_for_step"][1] = True
+
+    # Step 2: always reachable (Step 1 can be skipped entirely)
+    ss["is_ready_for_step"][2] = True
+    #ss["is_ready_for_step"][2] = bool(ss.get("outline")) or bool(ss.get("course_text"))
+
+    # Step 3: ready if module text has been provided (upload or import)
+    ss["is_ready_for_step"][3] = bool(ss.get("module_text"))
+
+    # Step 4: ready if there are learning objectives and all have been accepted/finalized
+    los = ss.get("los", [])
+    ss["is_ready_for_step"][4] = bool(los) and all(lo.get("final_text") for lo in los)
+
+    # Step 5: ready if questions exist
+    ss["is_ready_for_step"][5] = bool(ss.get("questions"))
+
 ####### Session state manipulation helpers ########
 
 def clear_outline_widget_state(ss: SessionStateProxy) -> None:

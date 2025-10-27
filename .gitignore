@@ -15,3 +15,5 @@
 __pycache__/
 app/__pycache__/
 
+# Notes to myself
+todo.md
