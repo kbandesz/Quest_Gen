@@ -21,6 +21,11 @@ from app.session_state_utils import (
     clear_module_dependent_outputs,
     apply_module_content,
     reset_uploaded_content,
+    finalize_lo,
+    reopen_lo,
+    reset_lo_questions,
+    apply_alignment_result,
+    update_lo_from_widgets,
 )
 
 ################################################
@@ -425,15 +430,6 @@ def render_step_3():
             ss[lo_level_key] = prev_level
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
-        module_sig = ss.get("module_sig", "")
-        current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
-        prev_align_sig = lo.get("alignment_sig")
-        if prev_align_sig and prev_align_sig != current_align_sig:
-            clear_alignment(ss, lo)
-            clear_questions(ss, lo["id"])
-            lo["final_text"] = None
-            is_final = False
-
         # Container for LO
         st.write("")
         with st.container(border=True):
@@ -442,7 +438,6 @@ def render_step_3():
             ta = st.text_area(f"**Objective #{i+1}**", key=lo_text_key, disabled=is_final,
                              label_visibility="visible", height=80, max_chars=170,
                              help="Edit your learning objective here.")
-            lo["text"] = ta
             has_avoid_verb = any(verb.lower() in ta.lower() for verb in const.LO_WRITING_TIPS["avoid_verbs"])
             if has_avoid_verb:
                 st.warning(f"⚠️ Avoid vague verbs like {', '.join(const.LO_WRITING_TIPS['avoid_verbs'])}. See tips above.")
@@ -451,7 +446,8 @@ def render_step_3():
             sel = st.selectbox("Intended Bloom level", const.BLOOM_LEVEL_DEFS.keys(), key=lo_level_key, disabled=is_final,
                                help="Select the intended Bloom's taxonomy level.",
                                label_visibility="visible")
-            lo["intended_level"] = sel
+            update_lo_from_widgets(ss, lo, ta, sel)
+            is_final = bool(lo.get("final_text"))
             st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
             
             # --- Visual cue for finalized ---            
@@ -469,31 +465,25 @@ def render_step_3():
                              help="Have another pair of AI eyes check your LO."
                              ):
                     with st.spinner("Checking alignment..."):
-                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        alignment_result = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                        apply_alignment_result(ss, lo, alignment_result)
                         st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
-                    lo["final_text"] = lo["text"]
-                    # Invalidate questions if needed
-                    current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
-                    prev_gen_sig = lo.get("generation_sig")
-                    if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                        clear_questions(ss, lo["id"])
-                        lo["generation_sig"] = None
+                    finalize_lo(ss, lo)
                     st.rerun()
             with btn_cols[2]:
                 if is_final:
                     if st.button("Re-open", key=f"unfinal_{lo['id']}_btn"):
-                        lo["final_text"] = None
+                        reopen_lo(lo)
                         st.rerun()
             with btn_cols[3]:
                 if st.button(":x: Delete", key=f"del_{lo['id']}_btn"):
                     ss.pop(lo_text_key, None)
                     ss.pop(lo_level_key, None)
-                    #ss.pop(nq_key, None)
+                    clear_alignment(ss, lo)
                     ss["los"].remove(lo)
-                    clear_questions(ss, lo["id"])
+                    reset_lo_questions(ss, lo)
                     st.rerun()
 
             # --- Alignment result (if available) ---
@@ -609,19 +599,13 @@ def render_step_3():
         if st.button("Check All", type="primary", disabled=not ss["los"]):
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
-                    lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                    alignment_result = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                    apply_alignment_result(ss, lo, alignment_result)
                 st.rerun()
     with all_btn_cols[1]:
         if st.button("Accept All", disabled=not ss["los"]):
             for lo in ss["los"]:
-                lo["final_text"] = lo["text"]
-                # Invalidate questions if needed
-                current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
-                prev_gen_sig = lo.get("generation_sig")
-                if prev_gen_sig and prev_gen_sig != current_gen_sig:
-                    clear_questions(ss, lo["id"])
-                    lo["generation_sig"] = None
+                finalize_lo(ss, lo)
             st.rerun()
 
     # --- Navigation ---

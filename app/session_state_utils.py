@@ -167,3 +167,50 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
+
+
+######## Learning objective helpers ########
+
+def update_lo_from_widgets(ss: SessionStateProxy, lo: Dict[str, Any], new_text: str, new_level: str) -> None:
+    """Apply widget values to an LO and clear dependent artifacts when signatures change."""
+    lo["text"] = new_text
+    lo["intended_level"] = new_level
+
+    module_sig = ss.get("module_sig", "")
+    current_align_sig = sig_alignment(new_text, new_level, module_sig)
+    prev_align_sig = lo.get("alignment_sig")
+
+    if prev_align_sig and prev_align_sig != current_align_sig:
+        clear_alignment(ss, lo)
+        clear_questions(ss, lo["id"])
+        lo["final_text"] = None
+
+
+def finalize_lo(ss: SessionStateProxy, lo: Dict[str, Any]) -> None:
+    """Mark a learning objective as final and manage question signatures."""
+    lo["final_text"] = lo.get("text")
+    module_sig = ss.get("module_sig", "")
+    current_gen_sig = sig_question_gen(lo.get("final_text"), lo.get("intended_level", ""), module_sig)
+    prev_gen_sig = lo.get("generation_sig")
+
+    if prev_gen_sig and prev_gen_sig != current_gen_sig:
+        clear_questions(ss, lo["id"])
+
+    lo["generation_sig"] = current_gen_sig
+
+
+def reopen_lo(lo: Dict[str, Any]) -> None:
+    """Allow editing of a previously finalized learning objective."""
+    lo["final_text"] = None
+
+
+def reset_lo_questions(ss: SessionStateProxy, lo: Dict[str, Any]) -> None:
+    """Clear generated questions and invalidate the LO generation signature."""
+    clear_questions(ss, lo.get("id"))
+    lo["generation_sig"] = None
+
+
+def apply_alignment_result(ss: SessionStateProxy, lo: Dict[str, Any], alignment_result: Dict[str, Any]) -> None:
+    """Persist an alignment result and update its signature for the current LO state."""
+    lo["alignment"] = alignment_result
+    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
