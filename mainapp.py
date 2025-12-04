@@ -687,15 +687,15 @@ def render_step_4():
             ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
-
+    # Check if there are any questions to display
     has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
-
+    # Switch between static and editable questions view
     if has_questions:
         st.write("")
         st.toggle(
             "Editable questions",
             key="editable_questions",
-            value=True,
+            value=False,
             help=(
                 "Switch between editable and static question views. In editable mode, you can refine stems, options, "
                 "and rationales."
