@@ -7,9 +7,11 @@ from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
 from app.export_docx import build_outline_docx, build_questions_docx
 from app.display_outline import display_editable_outline, display_static_outline
+from app.display_questions import display_editable_question, display_static_question
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
+    init_session_state,
     sig_alignment,
     sig_question_gen,
     sig_outline,
@@ -34,38 +36,7 @@ apply_pending_restore()
 
 # Initialize session state
 ss = st.session_state
-ss.setdefault("current_step", 1)
-ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
-
-ss.setdefault("course_files", [])
-ss.setdefault("course_text", "")
-ss.setdefault("course_tokens", 0)
-ss.setdefault("outline_guidance", "")
-
-ss.setdefault("module_files", [])
-ss.setdefault("module_text", "")
-ss.setdefault("module_tokens", 0)
-ss.setdefault("module_sig", "")
-
-ss.setdefault("los", [])
-ss.setdefault("questions", {})
-ss.setdefault("questions_sig", None)
-ss.setdefault("show_lo_import_dialog", False)
-ss.setdefault("lo_import_selection", [])
-
-ss.setdefault("include_opts", {})
-ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
-ss.setdefault("docx_file", "")
-ss.setdefault("outline_docx_file", b"")
-ss.setdefault("outline_sig", None)
-ss.setdefault("outline_doc_sig", None)
-
-ss.setdefault("MOCK_MODE", True)
-#ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
-ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
-
-ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
-
+init_session_state(ss)
 
 ################################################
 # Title and warning based on current mock setting
@@ -658,7 +629,7 @@ def render_step_4():
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
-        row_cols[1].number_input("", min_value=1, max_value=10,
+        row_cols[1].number_input("", min_value=0, max_value=5,
                                  key=nq_key, label_visibility="collapsed")
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
@@ -668,6 +639,8 @@ def render_step_4():
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
                 nq = ss.get(f"nq_{lo['id']}", 1)
+                if nq==0:
+                    continue
                 payload = generate_questions(
                     lo.get("final_text"),
                     lo["intended_level"],
@@ -686,41 +659,35 @@ def render_step_4():
             ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
-
-    # Go over all LOs
-    for lo in ss["los"]:
-        qs=ss["questions"].get(lo["id"],[])
-        if not qs:
-            continue
-        with st.container(border=True):
-            st.subheader(f"{lo.get('final_text')}")
-            for idx,q in enumerate(qs):
-                with st.expander(f"Question {idx+1}", expanded=False):
-                    # Question stem
-                    q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
-                                        height=70, label_visibility="collapsed")
-                    # Answer options
-                    for opt in q["options"]:
-                        cols = st.columns([1, 30])
-                        with cols[0]:
-                            st.markdown(f"**({opt['id']})**")
-                        with cols[1]:
-                            opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"],
-                                                    key=f"opt_{lo['id']}_{idx}_{opt['id']}",
-                                                    label_visibility="collapsed")
-                    # Correct answer
-                    current=["A","B","C","D"].index(q["correct_option_id"])
-                    q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
-                    # Feedback for each option
-                    st.markdown("Feedback")
-                    for opt in q["options"]:
-                        opt["option_rationale"]=st.text_area(f"**({opt['id']})**", opt.get("option_rationale",""),
-                                                             key=f"rat_{lo['id']}_{idx}_{opt['id']}", height=70)
-                    # Content reference and cognitive rationale
-                    q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""),
-                                                       key=f"ref_{lo['id']}_{idx}", height=70)
-                    q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""),
-                                                          key=f"cograt_{lo['id']}_{idx}", height=70)
+    # Check if there are any questions to display
+    has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # Switch between static and editable questions view
+    if has_questions:
+        st.write("")
+        st.toggle(
+            "Editable questions",
+            key="editable_questions",
+            value=False,
+            help=(
+                "Switch between editable and static question views. In editable mode, you can refine stems, options, "
+                "and rationales."
+            ),
+        )
+        # Go over all LOs, each in a container
+        for lo in ss["los"]:
+            qs = ss["questions"].get(lo["id"], [])
+            if not qs:
+                continue
+            with st.container(border=True):
+                st.subheader(lo.get("final_text"))
+                # Go over all questions for this LO
+                for idx, q in enumerate(qs):
+                    with st.expander(f"**{idx + 1}. {q.get('stem', 'N/A')}**", expanded=False):
+                        # Display static or editable question details based on toggle
+                        if ss["editable_questions"]:
+                            display_editable_question(lo["id"], idx,q)
+                        else:
+                            display_static_question(q)
 
     # After all widgets have applied edits, detect real changes
     new_q_sig = sig_questions(ss.get("questions", {}))
