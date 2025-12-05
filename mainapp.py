@@ -11,6 +11,7 @@ from app.display_questions import display_editable_question, display_static_ques
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
+    init_session_state,
     sig_alignment,
     sig_question_gen,
     sig_outline,
@@ -35,38 +36,7 @@ apply_pending_restore()
 
 # Initialize session state
 ss = st.session_state
-ss.setdefault("current_step", 1)
-ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
-
-ss.setdefault("course_files", [])
-ss.setdefault("course_text", "")
-ss.setdefault("course_tokens", 0)
-ss.setdefault("outline_guidance", "")
-
-ss.setdefault("module_files", [])
-ss.setdefault("module_text", "")
-ss.setdefault("module_tokens", 0)
-ss.setdefault("module_sig", "")
-
-ss.setdefault("los", [])
-ss.setdefault("questions", {})
-ss.setdefault("questions_sig", None)
-ss.setdefault("show_lo_import_dialog", False)
-ss.setdefault("lo_import_selection", [])
-
-ss.setdefault("include_opts", {})
-ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
-ss.setdefault("docx_file", "")
-ss.setdefault("outline_docx_file", b"")
-ss.setdefault("outline_sig", None)
-ss.setdefault("outline_doc_sig", None)
-
-ss.setdefault("MOCK_MODE", True)
-#ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
-ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
-
-ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
-
+init_session_state(ss)
 
 ################################################
 # Title and warning based on current mock setting

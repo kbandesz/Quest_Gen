@@ -8,6 +8,41 @@ from typing import Any, Dict, Iterable, List, MutableMapping, Optional
 from streamlit.runtime.state import SessionStateProxy
 import streamlit as st
 
+####### Session state defaults ########
+def init_session_state(ss: SessionStateProxy) -> None:
+    """Seed all expected session state keys with defaults."""
+
+    ss.setdefault("current_step", 1)
+    ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
+
+    ss.setdefault("course_files", [])
+    ss.setdefault("course_text", "")
+    ss.setdefault("course_tokens", 0)
+    ss.setdefault("outline_guidance", "")
+
+    ss.setdefault("module_files", [])
+    ss.setdefault("module_text", "")
+    ss.setdefault("module_tokens", 0)
+    ss.setdefault("module_sig", "")
+
+    ss.setdefault("los", [])
+    ss.setdefault("questions", {})
+    ss.setdefault("questions_sig", None)
+    ss.setdefault("show_lo_import_dialog", False)
+    ss.setdefault("lo_import_selection", [])
+
+    ss.setdefault("include_opts", {})
+    ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
+    ss.setdefault("docx_file", "")
+    ss.setdefault("outline_docx_file", b"")
+    ss.setdefault("outline_sig", None)
+    ss.setdefault("outline_doc_sig", None)
+
+    ss.setdefault("MOCK_MODE", True)
+    ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
+
+    ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
+
 ######## Signature computation helpers ########
 
 def sig_outline(outline: Optional[Dict[str, Any]]) -> str:
