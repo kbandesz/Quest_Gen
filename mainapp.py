@@ -7,7 +7,7 @@ from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
 from app.export_docx import build_outline_docx, build_questions_docx
 from app.display_outline import display_editable_outline, display_static_outline
-from app.display_questions import display_editable_questions, display_static_questions
+from app.display_questions import display_editable_question, display_static_question
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
@@ -659,7 +659,7 @@ def render_step_4():
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
-        row_cols[1].number_input("", min_value=1, max_value=10,
+        row_cols[1].number_input("", min_value=0, max_value=5,
                                  key=nq_key, label_visibility="collapsed")
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
@@ -669,6 +669,8 @@ def render_step_4():
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
                 nq = ss.get(f"nq_{lo['id']}", 1)
+                if nq==0:
+                    continue
                 payload = generate_questions(
                     lo.get("final_text"),
                     lo["intended_level"],
@@ -701,11 +703,21 @@ def render_step_4():
                 "and rationales."
             ),
         )
-
-        if ss["editable_questions"]:
-            display_editable_questions(ss["los"], ss["questions"])
-        else:
-            display_static_questions(ss["los"], ss["questions"])
+        # Go over all LOs, each in a container
+        for lo in ss["los"]:
+            qs = ss["questions"].get(lo["id"], [])
+            if not qs:
+                continue
+            with st.container(border=True):
+                st.subheader(lo.get("final_text"))
+                # Go over all questions for this LO
+                for idx, q in enumerate(qs):
+                    with st.expander(f"**{idx + 1}. {q.get('stem', 'N/A')}**", expanded=False):
+                        # Display static or editable question details based on toggle
+                        if ss["editable_questions"]:
+                            display_editable_question(lo["id"], idx,q)
+                        else:
+                            display_static_question(q)
 
     # After all widgets have applied edits, detect real changes
     new_q_sig = sig_questions(ss.get("questions", {}))
