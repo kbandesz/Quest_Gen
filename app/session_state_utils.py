@@ -215,11 +215,13 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
     with col1:
         if st.button("Confirm"):
             # Clear everything and go back to Step 1
-            current_mock_mode = ss["MOCK_MODE"]
-            ss["uploader_key"] += 1
+            current_mock_mode = ss.get("MOCK_MODE")
+            next_uploader_key = ss.get("uploader_key", 0) + 1
+            #ss["uploader_key"] += 1
             ss.clear()
-            if mock_mode_change:
-                ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+            ss["uploader_key"] = next_uploader_key
+            #if mock_mode_change:
+            ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
             st.rerun() # Rerun to dismiss the dialog and update the app state
     with col2:
         if st.button("Cancel"):
