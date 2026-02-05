@@ -602,6 +602,10 @@ def render_step_4():
     
     # Render table: LO text and per-LO number input (default 0)
     st.markdown("##### How many questions would you like per learning objective?")
+    if ss.pop("reset_question_counts", False):
+        for lo in ss["los"]:
+            ss[f"nq_{lo['id']}"] = 0
+
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
     header_cols[1].markdown("**# of Questions**")
@@ -638,7 +642,7 @@ def render_step_4():
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
-                ss[nq_key] = 0
+            ss["reset_question_counts"] = True
             # After regeneration, update questions_sig
             # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
