@@ -1,6 +1,6 @@
 """UI elements to display AI-generated questions in editable and static formats."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 import streamlit as st
 
 
@@ -86,6 +86,38 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
         key=f"cognitive_rationale_{lo_id}_{idx}",
     )
     return delete_clicked
+
+
+def clear_reindexed_question_widget_state(
+    lo_id: str,
+    start_idx: int,
+    questions: List[Dict[str, Any]],
+) -> None:
+    """Clear widget state for question rows whose indices shift after deletion."""
+    if start_idx < 0 or start_idx >= len(questions):
+        return
+
+    option_ids: set[str] = {"A", "B", "C", "D"}
+    for question in questions[start_idx:]:
+        for opt in question.get("options", []):
+            opt_id = str(opt.get("id", "")).strip()
+            if opt_id:
+                option_ids.add(opt_id)
+
+    for idx in range(start_idx, len(questions)):
+        fixed_keys = [
+            f"delete_q_{lo_id}_{idx}",
+            f"stem_{lo_id}_{idx}",
+            f"correct_option_{lo_id}_{idx}",
+            f"content_reference_{lo_id}_{idx}",
+            f"cognitive_rationale_{lo_id}_{idx}",
+        ]
+        for key in fixed_keys:
+            st.session_state.pop(key, None)
+
+        for opt_id in option_ids:
+            st.session_state.pop(f"opt_text_{lo_id}_{idx}_{opt_id}", None)
+            st.session_state.pop(f"option_rationale_{lo_id}_{idx}_{opt_id}", None)
 
 def display_static_question(q: Dict[str, Any]) -> None:
     """Render a formatted, read-only view of a question."""
