@@ -4,9 +4,10 @@ from typing import List, Dict, Optional, Any
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_COLOR_INDEX
+import streamlit as st
 
-
-def build_outline_docx(outline: Dict[str, Any]) -> bytes:
+# Build a DOCX document for the course outline
+def _build_outline_docx(outline: Dict[str, Any]) -> bytes:
     """Construct a polished DOCX document summarizing the course outline."""
 
     doc = Document()
@@ -111,7 +112,12 @@ def build_outline_docx(outline: Dict[str, Any]) -> bytes:
     return bio.getvalue()
 
 
-def build_questions_docx(los:List[Dict[str,Any]], questions_by_lo:Dict[str,list], include:Optional[Dict[str,bool]]=None)->bytes:
+@st.cache_data(show_spinner="Building outline DOCX…")
+def build_outline_docx_cached(outline: Dict[str, Any]) -> bytes:
+    return _build_outline_docx(outline)
+
+# Build a DOCX document for the generated questions
+def _build_questions_docx(los:List[Dict[str,Any]], questions:Dict[str,list], include:Optional[Dict[str,bool]]=None)->bytes:
     doc = Document()
     # Force Title and Heading styles to use Arial as well
     for style_name in ["Title", "Heading 1", "Heading 2", "Heading 3"]:
@@ -154,7 +160,7 @@ def build_questions_docx(los:List[Dict[str,Any]], questions_by_lo:Dict[str,list]
             run.italic = True
 
         # Go over questions
-        qs = questions_by_lo.get(lo_id, [])
+        qs = questions.get(lo_id, [])
         for idx, q in enumerate(qs, start=1):
             # Question stem
             para = doc.add_paragraph()
@@ -207,6 +213,10 @@ def build_questions_docx(los:List[Dict[str,Any]], questions_by_lo:Dict[str,list]
     doc.save(bio)
     return bio.getvalue()
 
-
-
-
+@st.cache_data(show_spinner="Building questions DOCX…")
+def build_questions_docx_cached(
+    los: List[Dict[str,Any]],
+    questions: Dict[str,list],
+    include: Optional[Dict[str,bool]]=None,
+) -> bytes:
+    return _build_questions_docx(los, questions, include=include)

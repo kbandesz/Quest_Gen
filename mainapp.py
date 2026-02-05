@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
-from app.export_docx import build_outline_docx, build_questions_docx
+from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
 from app.display_questions import display_editable_question, display_static_question
 from app.save_load_progress import save_load_panel, apply_pending_restore
@@ -14,15 +14,15 @@ from app.session_state_utils import (
     init_session_state,
     sig_alignment,
     sig_question_gen,
-    sig_outline,
+    #sig_outline,
     sig_questions,
     compute_step_readiness,
     clear_outline_widget_state,
     clear_alignment,
     clear_questions,
-    clear_module_dependent_outputs,
+    #clear_module_dependent_outputs,
     apply_module_content,
-    reset_uploaded_content,
+    #reset_uploaded_content,
     reset_session,
 )
 
@@ -49,26 +49,6 @@ st.markdown("##### _Smarter course design—powered by AI._")
 # Sidebar for settings
 ################################################
 with st.sidebar:
-
-
-    # # If mock mode was toggled: confirm and clear everything and go back to Step 1
-    # @st.dialog("Confirm Action", dismissible=False, width="small")
-    # def _on_mock_mode_change():
-    #     st.write("This will will clear everything. Are you sure you want to proceed?")
-    #     col1, col2 = st.columns(2)
-    #     with col1:
-    #         if st.button("Confirm"):
-    #             # If mock mode was toggled, clear everything and go back to Step 1
-    #             ss.pop("outline", None)
-    #             clear_module_dependent_outputs(ss)
-    #             reset_uploaded_content(ss)
-    #             ss["current_step"] = 1
-    #             st.rerun() # Rerun to dismiss the dialog and update the app state
-    #     with col2:
-    #         if st.button("Cancel"):
-    #             #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
-    #             ss["MOCK_MODE"] = not ss["MOCK_MODE"]
-    #             st.rerun()
 
     # --- Settings ---
     st.markdown("### Settings")
@@ -103,7 +83,6 @@ def render_stepper():
     
     steps = [outline, upload, LOs, quest_gen, export]
 
-    #############
     # Short button labels (clickable)
     step_labels = [
         "📚 1. Outline",
@@ -112,9 +91,6 @@ def render_stepper():
         "✍️ 2c. Questions ->",
         "📄 2d. Final Output",
     ]
-
-
-    #########
 
     # wrap the whole stepper in a bordered "card"
     with st.container(border=True):
@@ -139,9 +115,6 @@ def render_stepper():
                     # upcoming step: subtle border box (not plain text)
                     #with st.container(border=True):
                     st.markdown(f":grey[{step_name}]")
-
-    # crisp separation from the rest of the page
-    #st.divider()
 
 ################################################
 # 1 Course Outline
@@ -220,9 +193,9 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             clear_outline_widget_state(ss)
             ss['outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-            ss["outline_sig"] = sig_outline(ss.get("outline"))
-            ss["outline_docx_file"] = b""
-            ss["outline_doc_sig"] = None
+            # ss["outline_sig"] = sig_outline(ss.get("outline"))
+            # ss["outline_docx_file"] = b""
+            # ss["outline_doc_sig"] = None
             st.rerun()
 
     # --- Display/Edit/Export Output ---
@@ -237,33 +210,25 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         else:
             display_static_outline(ss['outline'])
 
-        current_outline_sig = sig_outline(ss.get("outline"))
-        if ss.get("outline_sig") != current_outline_sig:
-            ss["outline_sig"] = current_outline_sig
+        # current_outline_sig = sig_outline(ss.get("outline"))
+        # if ss.get("outline_sig") != current_outline_sig:
+        #     ss["outline_sig"] = current_outline_sig
 
-        # Export outline to DOCX
+        # --- Export outline ---
         st.markdown("---")
         st.markdown("#### Export outline")
-        cols = st.columns([1, 1])
-        with cols[0]:
-            if st.button("Build outline DOCX"):
-                ss["outline_docx_file"] = build_outline_docx(ss["outline"])
-                ss["outline_doc_sig"] = current_outline_sig
-        with cols[1]:
-            doc_ready = bool(ss.get("outline_docx_file")) and ss.get("outline_doc_sig") == current_outline_sig
-            if ss.get("outline_docx_file") and not doc_ready:
-                help_msg = "Outline changed. Rebuild the DOCX to download the latest version."
-            else:
-                help_msg = "Build the outline DOCX before downloading."
-            st.download_button(
-                "Download outline",
-                data=ss.get("outline_docx_file", b""),
-                file_name="course_outline.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                disabled=not doc_ready,
-                help=help_msg if not doc_ready else "",
-                type="primary" if doc_ready else "secondary"
-            )
+
+        outline = ss.get("outline")
+
+        st.download_button(
+            "Download outline",
+            data=lambda: build_outline_docx_cached(outline),
+            file_name="course_outline.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            disabled=not bool(outline),
+            help="Download outline as a Word file.",
+            type="primary" if bool(outline) else "secondary"
+        )
 
     # --- Navigation ---
     st.divider()
@@ -272,6 +237,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
             ss["current_step"] = 2
             st.rerun()
+
 ################################################
 # 2 Upload Course Content
 ################################################
@@ -720,7 +686,7 @@ def render_step_4():
             st.rerun()
     
 ################################################
-# 5 Export
+# 5 Export Questions
 ################################################
 def render_step_5():
 
@@ -761,25 +727,48 @@ def render_step_5():
         "rationale": inc_rationale,
     }
 
-    st.markdown("")
-    cols = st.columns([1,1])
-    with cols[0]:
-        if st.button("Build question DOCX"):
-            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
-            ss["prev_build_inc_opts"] = ss['include_opts']
-    with cols[1]:
-        no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
-        help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
-        st.download_button(
-            "Download questions",
-            data=ss.get("docx_file", ""),
-            file_name="assessment_questions.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            disabled = no_docx_for_selection,
-            type="primary" if not no_docx_for_selection else "secondary",
-            help=help_string if no_docx_for_selection else ""
-            )        
     
+    
+    # cols = st.columns([1,1])
+    # with cols[0]:
+    #     if st.button("Build question DOCX"):
+    #         ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
+    #         ss["prev_build_inc_opts"] = ss['include_opts']
+    # with cols[1]:
+    #     no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
+    #     help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
+    #     st.download_button(
+    #         "Download questions",
+    #         data=ss.get("docx_file", ""),
+    #         file_name="assessment_questions.docx",
+    #         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    #         disabled = no_docx_for_selection,
+    #         type="primary" if not no_docx_for_selection else "secondary",
+    #         help=help_string if no_docx_for_selection else ""
+    #         )        
+
+    # Download button with on-the-fly generation (cached)
+    st.markdown("")
+    questions = ss.get("questions", {})
+    los = ss.get("los", [])
+    include = ss.get("include_opts", {})
+
+    doc_ready = bool(los) and bool(questions)
+
+    st.download_button(
+        "Download",
+        data=lambda: build_questions_docx_cached(
+            los,
+            questions,
+            include,
+        ),
+        file_name="assessment_questions.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        disabled=not doc_ready,
+        help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
+        type="primary" if doc_ready else "secondary"
+    )
+
     # --- Navigation ---
     st.divider()
     if st.button("← Back: Generate Questions"):

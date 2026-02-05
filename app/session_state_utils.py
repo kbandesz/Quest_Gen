@@ -34,9 +34,9 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("include_opts", {})
     ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
     ss.setdefault("docx_file", "")
-    ss.setdefault("outline_docx_file", b"")
-    ss.setdefault("outline_sig", None)
-    ss.setdefault("outline_doc_sig", None)
+    # ss.setdefault("outline_docx_file", b"")
+    #ss.setdefault("outline_sig", None)
+    # ss.setdefault("outline_doc_sig", None)
 
     ss.setdefault("MOCK_MODE", True)
     ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
@@ -70,11 +70,11 @@ def sig_question_gen(final_lo_text: str, intended_level: str, module_sig: str) -
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def sig_questions(questions_by_lo: Dict[str, Iterable[Dict[str, Any]]]) -> str:
+def sig_questions(questions: Dict[str, Iterable[Dict[str, Any]]]) -> str:
     """Stable signature encompassing all editable question fields."""
     parts: List[str] = []
-    for lo_id in sorted(questions_by_lo.keys()):
-        qs = list(questions_by_lo.get(lo_id) or [])
+    for lo_id in sorted(questions.keys()):
+        qs = list(questions.get(lo_id) or [])
         for qi, question in enumerate(qs):
             parts.append(f"{lo_id}#{qi}|stem:{question.get('stem', '')}")
             parts.append(f"{lo_id}#{qi}|correct:{question.get('correct_option_id', '')}")
