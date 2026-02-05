@@ -7,7 +7,12 @@ from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
 from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
-from app.display_questions import display_editable_question, display_static_question
+from app.display_questions import (
+    clear_deleted_question_widget_state,
+    create_empty_question,
+    display_editable_question,
+    display_static_question,
+)
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
@@ -162,17 +167,18 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
     
-    with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
-        # Display currently uploaded files
-        if ss["course_files"]:
+    if ss["course_files"]:
+        with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
+            # Display currently uploaded files
+            #if ss["course_files"]:
             st.caption("Currently uploaded files (To change, use file picker above):")
             current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
             st.markdown(current_files)
 
-        # Display token count & preview from session (stable across reruns)
-        st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
-        st.caption("Preview first 5,000 characters")
-        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+            # Display token count & preview from session (stable across reruns)
+            st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
     #  In mock mode, pre-fill with example
@@ -594,15 +600,19 @@ def render_step_4():
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
     
-    # Render table: LO text and per-LO number input (default 1)
-    st.markdown("##### How many questions would you like per learning objective?")
+    # Render table: LO text and per-LO number input (default 0)
+    st.markdown("##### How many new questions would you like to generate per learning objective?")
+    if ss.pop("reset_question_counts", False):
+        for lo in ss["los"]:
+            ss[f"nq_{lo['id']}"] = 0
+
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
     header_cols[1].markdown("**# of Questions**")
     for lo in ss["los"]:
         nq_key = f"nq_{lo['id']}"
         if nq_key not in ss:
-            ss[nq_key] = len(ss.get("questions", {}).get(lo["id"], [])) or 1
+            ss[nq_key] = 0
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
@@ -611,11 +621,11 @@ def render_step_4():
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
-            # Clear all existing questions (if any)
-            clear_questions(ss)
+            ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
-                nq = ss.get(f"nq_{lo['id']}", 1)
+                nq_key = f"nq_{lo['id']}"
+                nq = ss.get(nq_key, 0)
                 if nq==0:
                     continue
                 payload = generate_questions(
@@ -624,54 +634,69 @@ def render_step_4():
                     ss["module_text"],
                     n_questions=nq,
                 )
-
-                ss["questions"][lo["id"]] = payload["questions"]
+                existing_questions = ss["questions"].setdefault(lo["id"], [])
+                existing_questions.extend(payload["questions"])
                 # store signature for question generation
                 lo["generation_sig"] = sig_question_gen(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
+            ss["reset_question_counts"] = True
             # After regeneration, update questions_sig
-            ss["questions_sig"] = sig_questions(ss["questions"])
+            # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
     # Check if there are any questions to display
-    has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # has_questions = True
     # Switch between static and editable questions view
-    if has_questions:
-        st.write("")
-        st.toggle(
-            "Editable questions",
-            key="editable_questions",
-            value=False,
-            help=(
-                "Switch between editable and static question views. In editable mode, you can refine stems, options, "
-                "and rationales."
-            ),
-        )
-        # Go over all LOs, each in a container
-        for lo in ss["los"]:
-            qs = ss["questions"].get(lo["id"], [])
-            if not qs:
-                continue
-            with st.container(border=True):
-                st.subheader(lo.get("final_text"))
-                # Go over all questions for this LO
-                for idx, q in enumerate(qs):
-                    with st.expander(f"**{idx + 1}. {q.get('stem', 'N/A')}**", expanded=False):
-                        # Display static or editable question details based on toggle
-                        if ss["editable_questions"]:
-                            display_editable_question(lo["id"], idx,q)
-                        else:
-                            display_static_question(q)
+    # if has_questions:
+    st.write("")
+    st.toggle(
+        "Editable questions",
+        key="editable_questions",
+        value=False,
+        help=(
+            "Switch between editable and static question views. In editable mode, you can refine stems, options, "
+            "and rationales."
+        ),
+    )
+    # Go over all LOs, each in a container
+    for lo in ss["los"]:
+        qs = ss["questions"].get(lo["id"], [])
+        # if not qs:
+        #     continue
+        with st.container(border=True):
+            st.subheader(lo.get("final_text"))
+            # Go over all questions for this LO
+            pending_delete_idx = None
+            for idx, q in enumerate(qs):
+                stem_preview = q.get("stem") or "(no question stem)"
+                with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
+                    # Display static or editable question details based on toggle
+                    if ss["editable_questions"]:
+                        if display_editable_question(lo["id"], idx, q):
+                            pending_delete_idx = idx
+                    else:
+                        display_static_question(q)
 
-    # After all widgets have applied edits, detect real changes
-    new_q_sig = sig_questions(ss.get("questions", {}))
-    if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
-        # User changed questions → previously built DOCX is now stale
-        ss["docx_file"] = "" #None
-    ss["questions_sig"] = new_q_sig
+            if ss["editable_questions"]:
+                if pending_delete_idx is not None:
+                    deleted_question = qs.pop(pending_delete_idx)
+                    clear_deleted_question_widget_state(lo["id"], deleted_question)
+                    st.rerun()
+
+                if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
+                    qs.append(create_empty_question())
+                    st.rerun()
+
+    # # After all widgets have applied edits, detect real changes
+    # new_q_sig = sig_questions(ss.get("questions", {}))
+    # if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
+    #     # User changed questions → previously built DOCX is now stale
+    #     ss["docx_file"] = "" #None
+    # ss["questions_sig"] = new_q_sig
 
     # --- Navigation ---
     st.divider()
