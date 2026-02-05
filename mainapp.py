@@ -7,7 +7,7 @@ from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
 from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
-from app.display_questions import display_editable_question, display_static_question
+from app.display_questions import create_empty_question, display_editable_question, display_static_question
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
@@ -658,13 +658,25 @@ def render_step_4():
             with st.container(border=True):
                 st.subheader(lo.get("final_text"))
                 # Go over all questions for this LO
+                pending_delete_idx = None
                 for idx, q in enumerate(qs):
-                    with st.expander(f"**{idx + 1}. {q.get('stem', 'N/A')}**", expanded=False):
+                    stem_preview = q.get("stem") or "(no question stem)"
+                    with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
                         # Display static or editable question details based on toggle
                         if ss["editable_questions"]:
-                            display_editable_question(lo["id"], idx,q)
+                            if display_editable_question(lo["id"], idx, q):
+                                pending_delete_idx = idx
                         else:
                             display_static_question(q)
+
+                if ss["editable_questions"]:
+                    if pending_delete_idx is not None:
+                        del qs[pending_delete_idx]
+                        st.rerun()
+
+                    if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
+                        qs.append(create_empty_question())
+                        st.rerun()
 
     # After all widgets have applied edits, detect real changes
     new_q_sig = sig_questions(ss.get("questions", {}))

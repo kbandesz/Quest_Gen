@@ -3,7 +3,24 @@
 from typing import Any, Dict
 import streamlit as st
 
-def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> None:
+
+def create_empty_question() -> Dict[str, Any]:
+    """Return a blank question scaffold for manual authoring."""
+    return {
+        "stem": "",
+        "options": [
+            {"id": "A", "text": "", "option_rationale": ""},
+            {"id": "B", "text": "", "option_rationale": ""},
+            {"id": "C", "text": "", "option_rationale": ""},
+            {"id": "D", "text": "", "option_rationale": ""},
+        ],
+        "correct_option_id": "A",
+        "contentReference": "",
+        "cognitive_rationale": "",
+    }
+
+
+def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
     """
     Render a question with editable fields for stem, options, and metadata.
     Args:
@@ -11,14 +28,17 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> None:
         idx: The index of the question (for unique key generation).
         q: The question data dictionary to be edited.
     """
-    # Question stem
-    q["stem"] = st.text_area(
-        "Question",
-        q.get("stem", ""),
-        height=70,
-        label_visibility="collapsed",
-        key=f"stem_{lo_id}_{idx}",
-    )
+    stem_cols = st.columns([1, 30], vertical_alignment="center")
+    with stem_cols[0]:
+        delete_clicked = st.button("❌", key=f"delete_q_{lo_id}_{idx}", help="Delete this question")
+    with stem_cols[1]:
+        q["stem"] = st.text_area(
+            "Question",
+            q.get("stem", ""),
+            height=70,
+            label_visibility="collapsed",
+            key=f"stem_{lo_id}_{idx}",
+        )
     # Answer options
     for opt in q.get("options", []):
         cols = st.columns([1, 30], vertical_alignment="center")
@@ -65,6 +85,7 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> None:
         height=70,
         key=f"cognitive_rationale_{lo_id}_{idx}",
     )
+    return delete_clicked
 
 def display_static_question(q: Dict[str, Any]) -> None:
     """Render a formatted, read-only view of a question."""
