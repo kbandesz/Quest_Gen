@@ -1,8 +1,7 @@
 """UI elements to display AI-generated questions in editable and static formats."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 from uuid import uuid4
-from typing import Any, Dict, List
 import streamlit as st
 
 
@@ -30,6 +29,40 @@ def _ensure_question_widget_id(q: Dict[str, Any]) -> str:
         widget_id = uuid4().hex
         q["_widget_id"] = widget_id
     return str(widget_id)
+
+
+def _question_widget_keys(lo_id: str, widget_id: str) -> Iterable[str]:
+    """Yield all Streamlit widget state keys used by one question widget group."""
+    key_prefix = f"{lo_id}_{widget_id}"
+    yield f"delete_q_{key_prefix}"
+    yield f"stem_{key_prefix}"
+    yield f"correct_option_{key_prefix}"
+    yield f"content_reference_{key_prefix}"
+    yield f"cognitive_rationale_{key_prefix}"
+    for option_id in ["A", "B", "C", "D"]:
+        yield f"opt_text_{key_prefix}_{option_id}"
+        yield f"option_rationale_{key_prefix}_{option_id}"
+
+
+def clear_deleted_question_widget_state(lo_id: str, q: Dict[str, Any]) -> None:
+    """Remove session-state widget values for a deleted question.
+
+    This prevents stale values from previously deleted question widgets from
+    being re-used when the app reruns.
+    """
+    widget_id = q.get("_widget_id")
+    if not widget_id:
+        return
+
+    for key in _question_widget_keys(lo_id, str(widget_id)):
+        st.session_state.pop(key, None)
+
+
+def clear_reindexed_question_widget_state(lo_id: str, deleted_idx: int, qs: list) -> None:
+    """Backwards-compatible no-op for older index-based widget cleanup calls."""
+    # Legacy index-based keys are not used anymore. Questions now use stable
+    # per-question widget IDs, so there is no reindexing work to perform.
+    del lo_id, deleted_idx, qs
 
 
 def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
