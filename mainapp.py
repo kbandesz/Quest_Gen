@@ -23,6 +23,7 @@ from app.session_state_utils import (
     clear_module_dependent_outputs,
     apply_module_content,
     reset_uploaded_content,
+    reset_session,
 )
 
 ################################################
@@ -48,41 +49,43 @@ st.markdown("##### _Smarter course design—powered by AI._")
 # Sidebar for settings
 ################################################
 with st.sidebar:
-    # Resetting everything and starting over
-    if st.button("Reset session"):
-        ss["uploader_key"] += 1
-        ss.clear()
-        st.rerun()
 
-    # If mock mode was toggled: confirm and clear everything and go back to Step 1
-    @st.dialog("Confirm Action", dismissible=False, width="small")
-    def _on_mock_mode_change():
-        st.write("This will will clear everything. Are you sure you want to proceed?")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Confirm"):
-                # If mock mode was toggled, clear everything and go back to Step 1
-                ss.pop("outline", None)
-                clear_module_dependent_outputs(ss)
-                reset_uploaded_content(ss)
-                ss["current_step"] = 1
-                st.rerun() # Rerun to dismiss the dialog and update the app state
-        with col2:
-            if st.button("Cancel"):
-                #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
-                ss["MOCK_MODE"] = not ss["MOCK_MODE"]
-                st.rerun()
 
-    # Change mock mode and model
+    # # If mock mode was toggled: confirm and clear everything and go back to Step 1
+    # @st.dialog("Confirm Action", dismissible=False, width="small")
+    # def _on_mock_mode_change():
+    #     st.write("This will will clear everything. Are you sure you want to proceed?")
+    #     col1, col2 = st.columns(2)
+    #     with col1:
+    #         if st.button("Confirm"):
+    #             # If mock mode was toggled, clear everything and go back to Step 1
+    #             ss.pop("outline", None)
+    #             clear_module_dependent_outputs(ss)
+    #             reset_uploaded_content(ss)
+    #             ss["current_step"] = 1
+    #             st.rerun() # Rerun to dismiss the dialog and update the app state
+    #     with col2:
+    #         if st.button("Cancel"):
+    #             #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
+    #             ss["MOCK_MODE"] = not ss["MOCK_MODE"]
+    #             st.rerun()
+
+    # --- Settings ---
     st.markdown("### Settings")
 
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_mock_mode_change)
+    # Toggle mock mode
+    st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
+    # Select model
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
-    # Save/load progress
+    # Save/load progress ---
     save_load_panel()
+
+    # Reset button to start over with clean slate
+    if st.button("Reset session"):
+        reset_session(ss)
 
 
 ################################################
@@ -104,10 +107,10 @@ def render_stepper():
     # Short button labels (clickable)
     step_labels = [
         "📚 1. Outline",
-        "📂 2a. Upload ->",
+        "📂 2a. Module ->",
         "🎯 2b. Objectives ->",
         "✍️ 2c. Questions ->",
-        "📄 2d. Export",
+        "📄 2d. Final Output",
     ]
 
 
@@ -147,16 +150,12 @@ def render_step_1():
     st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
-Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
+A course outline acts as a blueprint for the course, ensuring a goal-oriented, logical, and structured learning experience for participants. Once finalized, it helps streamline the entire course development process.
 """)
     with st.expander("**Structure of an IMF course**", expanded=False):
-        cols = st.columns([3, 1], gap="medium")
-        with cols[0]:
-            st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
-        with cols[1]:
-            st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
+        st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
     
-    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
+    st.markdown("The first step (1. Outline) of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
     files = st.file_uploader(
         "**Upload Source Materials (e.g., papers, presentations, notes)**",
@@ -263,22 +262,24 @@ Investing time upfront in the outline will make the presentation of content more
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 disabled=not doc_ready,
                 help=help_msg if not doc_ready else "",
+                type="primary" if doc_ready else "secondary"
             )
 
     # --- Navigation ---
     st.divider()
-    if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
-        ss["current_step"] = 2
-        st.rerun()
+    cols = st.columns([1, 1])
+    with cols[1]:
+        if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
+            ss["current_step"] = 2
+            st.rerun()
 ################################################
 # 2 Upload Course Content
 ################################################
 def render_step_2():
-    help_upload = """You can upload any content that you will use to develop the module.
+    st.header("📂 Upload Module Material")  
+    st.markdown( """You can upload any content that you will use to develop the module.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the module content."""
-    st.header("📂 Upload Module Material", help=help_upload)
-
+                presentations, or any other documents that you plan to use for writing the module content.""")
     files: List[Any] = []
     upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
     with upload_col:
@@ -294,7 +295,7 @@ def render_step_2():
     with import_col:
         import_disabled = not bool(ss.get("course_text"))
         if st.button(
-            "Import from outline",
+            "📥 Import source files from Outline step",
             help="Import all source material uploaded for the course outline",
             disabled=import_disabled,
         ):
@@ -374,28 +375,32 @@ def render_step_3():
     st.markdown(const.BLOOM_DEF)
     # Visual reference (expandable pyramid)
     with st.expander("Bloom's Taxonomy", expanded=False):
-        cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
-        with cols[1]:
-            st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
+        _, center_col, _ = st.columns([1, 3, 1]) # Adjust the ratios as needed
+        with center_col:
+            st.image(const.BLOOM_PYRAMID_IMAGE, width=500)
+        
+        st.markdown("""
+            To learn more:
+            - [Using Bloom's Taxonomy to Write Effective Learning Objectives](https://tips.uark.edu/using-blooms-taxonomy/)
+            - [Writing Course and Module Learning Objectives](https://intlmonetaryfund.sharepoint.com/teams/Section-OLTeam-ICDIP/Shared%20Documents/Forms/AllItems.aspx?id=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives%2FBloom%27s%20Taxonomy%20%2D%20Objectives%2Epdf&parent=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives)
+            """)
     st.write("---")
 
 
     # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
-        lo_text_key = f"lo_text_{lo['id']}"
-        lo_level_key = f"lo_level_{lo['id']}"
-        prev_text = lo.get("text", "")
-        prev_level = lo.get("intended_level", "Remember")
-
-        is_final = bool(lo.get("final_text"))
 
         # Seed widget state only once, on creation
+        lo_text_key = f"lo_text_{lo['id']}"
+        lo_level_key = f"lo_level_{lo['id']}"
+
         if lo_text_key not in ss:
-            ss[lo_text_key] = prev_text
+            ss[lo_text_key] = lo.get("text", "")
         if lo_level_key not in ss:
-            ss[lo_level_key] = prev_level
+            ss[lo_level_key] = lo.get("intended_level", None)
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
+        is_final = bool(lo.get("final_text"))
         module_sig = ss.get("module_sig", "")
         current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
@@ -419,11 +424,16 @@ def render_step_3():
                 st.warning(f"⚠️ Avoid vague verbs like {', '.join(const.LO_WRITING_TIPS['avoid_verbs'])}. See tips above.")
 
             # --- Bloom level selector ---
-            sel = st.selectbox("Intended Bloom level", const.BLOOM_LEVEL_DEFS.keys(), key=lo_level_key, disabled=is_final,
-                               help="Select the intended Bloom's taxonomy level.",
+            bloom_options = list(const.BLOOM_LEVEL_DEFS.keys())
+            sel = st.selectbox("Intended Bloom level", options=bloom_options, key=lo_level_key,
+                               index=None, placeholder="Select ...",
+                               disabled=is_final, help="Select the intended Bloom's taxonomy level.",
                                label_visibility="visible")
             lo["intended_level"] = sel
-            st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
+            if sel is None:
+                 st.info("Choose a Bloom level to see the definition and common verbs.")
+            else:
+                st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
             
             # --- Visual cue for finalized ---            
             if is_final:
@@ -435,8 +445,9 @@ def render_step_3():
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
+                can_check = (not is_final) and bool(lo["text"].strip()) and (lo["intended_level"] is not None)
                 if st.button("Alignment Check", key=f"align_{lo['id']}_btn",
-                             disabled=is_final, type="primary",
+                             disabled=not can_check, type="primary",
                              help="Have another pair of AI eyes check your LO."
                              ):
                     with st.spinner("Checking alignment..."):
@@ -444,7 +455,7 @@ def render_step_3():
                         lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
-                if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
+                if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=not can_check):
                     lo["final_text"] = lo["text"]
                     # Invalidate questions if needed
                     current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
@@ -487,7 +498,7 @@ def render_step_3():
             ss["los"].append({
                 "id": new_id,
                 "text": "",
-                "intended_level": "Remember",
+                "intended_level": None,
                 "alignment": None,
                 "final_text": None,
                 "alignment_sig": None,
@@ -542,7 +553,7 @@ def render_step_3():
                         ss["los"].append({
                             "id": new_id,
                             "text": objective_text,
-                            "intended_level": "Remember",
+                            "intended_level": None,
                             "alignment": None,
                             "final_text": None,
                             "alignment_sig": None,
@@ -555,7 +566,7 @@ def render_step_3():
     # 2) Open the dialog from a button
     import_help = " Choose a module from your outline and import its learning objectives"
     with import_col:
-        if st.button("📥 Import from Outline", key="import_lo_from_outline",
+        if st.button("📥 Import objectives from Outline", key="import_lo_from_outline",
                      help=import_help, disabled=not has_outline_modules):
             # Prepare labels each time dialog is opened
             module_labels, label_to_index = [], {}
@@ -599,7 +610,7 @@ def render_step_3():
     st.divider()
     cols = st.columns([1, 1])
     with cols[0]:
-        if st.button("← Back: Upload Material"):
+        if st.button("← Back: Module Materials"):
             ss["current_step"] = 2
             st.rerun()
     with cols[1]:
@@ -612,13 +623,13 @@ def render_step_3():
 #################################################
 def render_step_4():
     st.header("✍️ Generate Questions")
-    st.markdown("[Tips or links to resources on writing good assessment questions.]")
+    st.markdown(const.QUESTION_TIPS)
     # Helper to check if we can run generation
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
     
     # Render table: LO text and per-LO number input (default 1)
-    st.markdown("#### Questions per learning objective")
+    st.markdown("##### How many questions would you like per learning objective?")
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
     header_cols[1].markdown("**# of Questions**")
@@ -753,18 +764,19 @@ def render_step_5():
     st.markdown("")
     cols = st.columns([1,1])
     with cols[0]:
-        if st.button("Build DOCX file"):
+        if st.button("Build question DOCX"):
             ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
             ss["prev_build_inc_opts"] = ss['include_opts']
     with cols[1]:
         no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
         help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
         st.download_button(
-            "Download",
+            "Download questions",
             data=ss.get("docx_file", ""),
             file_name="assessment_questions.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             disabled = no_docx_for_selection,
+            type="primary" if not no_docx_for_selection else "secondary",
             help=help_string if no_docx_for_selection else ""
             )        
     

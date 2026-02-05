@@ -21,12 +21,15 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> None:
     )
     # Answer options
     for opt in q.get("options", []):
-        cols = st.columns([1, 30])
+        cols = st.columns([1, 30], vertical_alignment="center")
         with cols[0]:
-            st.markdown(f"**({opt['id']})**")
+            st.markdown(
+                f"<span style='white-space:nowrap; font-weight:600;'>({opt['id']})</span>", # <--- Keep option ID on one line and bold
+                unsafe_allow_html=True,
+                )
         with cols[1]:
             opt["text"] = st.text_input(
-                f"**({opt['id']})**",
+                "",
                 opt.get("text", ""),
                 label_visibility="collapsed",
                 key=f"opt_text_{lo_id}_{idx}_{opt['id']}",

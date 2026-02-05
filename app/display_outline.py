@@ -182,12 +182,13 @@ def display_static_outline(outline: Dict[str, Any]):
             for j, section in enumerate(module.get("sections", [])):
                 st.markdown(f"#### Section {j+1}: {section.get('sectionTitle', 'N/A')}")
                 
+                st.markdown("**Section Objectives:**")
                 for s_obj in section.get("sectionLevelObjectives", []):
-                    st.markdown(f"_{s_obj}_")
+                    st.markdown(f"{s_obj}")
 
                 for k, unit in enumerate(section.get("units", [])):
                     with st.expander(f"**Unit {j+1}.{k+1}: {unit.get('unitTitle', 'N/A')}**", expanded=False):
-                        st.markdown(f"_**Objective:** {unit.get("unitLevelObjective", 'N/A')}_")
+                        st.markdown(f"**Objective:** {unit.get('unitLevelObjective', 'N/A')}")
                         st.markdown("**Key Points:**")
                         for point in unit.get("keyPoints", []):
                             st.markdown(f"  - {point}")
