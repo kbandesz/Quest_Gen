@@ -612,7 +612,8 @@ def render_step_4():
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
             # Clear all existing questions (if any)
-            clear_questions(ss)
+            clear_questions(ss) # consider adding the newly generated questions to existing ones instead of clearing all?
+            ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
                 nq = ss.get(f"nq_{lo['id']}", 1)
@@ -633,57 +634,58 @@ def render_step_4():
                     ss.get("module_sig", "")
                 )
             # After regeneration, update questions_sig
-            ss["questions_sig"] = sig_questions(ss["questions"])
+            # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
     # Check if there are any questions to display
-    has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # has_questions = True
     # Switch between static and editable questions view
-    if has_questions:
-        st.write("")
-        st.toggle(
-            "Editable questions",
-            key="editable_questions",
-            value=False,
-            help=(
-                "Switch between editable and static question views. In editable mode, you can refine stems, options, "
-                "and rationales."
-            ),
-        )
-        # Go over all LOs, each in a container
-        for lo in ss["los"]:
-            qs = ss["questions"].get(lo["id"], [])
-            if not qs:
-                continue
-            with st.container(border=True):
-                st.subheader(lo.get("final_text"))
-                # Go over all questions for this LO
-                pending_delete_idx = None
-                for idx, q in enumerate(qs):
-                    stem_preview = q.get("stem") or "(no question stem)"
-                    with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
-                        # Display static or editable question details based on toggle
-                        if ss["editable_questions"]:
-                            if display_editable_question(lo["id"], idx, q):
-                                pending_delete_idx = idx
-                        else:
-                            display_static_question(q)
+    # if has_questions:
+    st.write("")
+    st.toggle(
+        "Editable questions",
+        key="editable_questions",
+        value=False,
+        help=(
+            "Switch between editable and static question views. In editable mode, you can refine stems, options, "
+            "and rationales."
+        ),
+    )
+    # Go over all LOs, each in a container
+    for lo in ss["los"]:
+        qs = ss["questions"].get(lo["id"], [])
+        # if not qs:
+        #     continue
+        with st.container(border=True):
+            st.subheader(lo.get("final_text"))
+            # Go over all questions for this LO
+            pending_delete_idx = None
+            for idx, q in enumerate(qs):
+                stem_preview = q.get("stem") or "(no question stem)"
+                with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
+                    # Display static or editable question details based on toggle
+                    if ss["editable_questions"]:
+                        if display_editable_question(lo["id"], idx, q):
+                            pending_delete_idx = idx
+                    else:
+                        display_static_question(q)
 
-                if ss["editable_questions"]:
-                    if pending_delete_idx is not None:
-                        del qs[pending_delete_idx]
-                        st.rerun()
+            if ss["editable_questions"]:
+                if pending_delete_idx is not None:
+                    del qs[pending_delete_idx]
+                    st.rerun()
 
-                    if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
-                        qs.append(create_empty_question())
-                        st.rerun()
+                if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
+                    qs.append(create_empty_question())
+                    st.rerun()
 
-    # After all widgets have applied edits, detect real changes
-    new_q_sig = sig_questions(ss.get("questions", {}))
-    if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
-        # User changed questions → previously built DOCX is now stale
-        ss["docx_file"] = "" #None
-    ss["questions_sig"] = new_q_sig
+    # # After all widgets have applied edits, detect real changes
+    # new_q_sig = sig_questions(ss.get("questions", {}))
+    # if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
+    #     # User changed questions → previously built DOCX is now stale
+    #     ss["docx_file"] = "" #None
+    # ss["questions_sig"] = new_q_sig
 
     # --- Navigation ---
     st.divider()

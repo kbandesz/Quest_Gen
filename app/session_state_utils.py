@@ -27,13 +27,13 @@ def init_session_state(ss: SessionStateProxy) -> None:
 
     ss.setdefault("los", [])
     ss.setdefault("questions", {})
-    ss.setdefault("questions_sig", None)
+    # ss.setdefault("questions_sig", None)
     ss.setdefault("show_lo_import_dialog", False)
     ss.setdefault("lo_import_selection", [])
 
     ss.setdefault("include_opts", {})
-    ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
-    ss.setdefault("docx_file", "")
+    # ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
+    # ss.setdefault("docx_file", "")
     # ss.setdefault("outline_docx_file", b"")
     #ss.setdefault("outline_sig", None)
     # ss.setdefault("outline_doc_sig", None)
@@ -140,24 +140,24 @@ def clear_questions(ss: SessionStateProxy, lo_id: Optional[str] = None) -> None:
             questions.pop(lo_id, None)
         else:
             questions.clear()
-            ss.pop("questions_sig", None)
+            # ss.pop("questions_sig", None)
     else:
         if not lo_id:
             ss.pop("questions", None)
-            ss.pop("questions_sig", None)
+            # ss.pop("questions_sig", None)
 
-    ss.pop("docx_file", "")
+    # ss.pop("docx_file", "")
     include_opts = ss.get("include_opts")
     if isinstance(include_opts, MutableMapping):
         include_opts.clear()
     else:
         ss.pop("include_opts", None)
 
-    prev_opts = ss.get("prev_build_inc_opts")
-    if isinstance(prev_opts, MutableMapping):
-        prev_opts.clear()
-    else:
-        ss.pop("prev_build_inc_opts", None)
+    # prev_opts = ss.get("prev_build_inc_opts")
+    # if isinstance(prev_opts, MutableMapping):
+    #     prev_opts.clear()
+    # else:
+    #     ss.pop("prev_build_inc_opts", None)
 
 
 def clear_module_dependent_outputs(ss: SessionStateProxy) -> None:

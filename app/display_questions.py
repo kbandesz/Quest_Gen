@@ -30,7 +30,7 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
     """
     stem_cols = st.columns([1, 30], vertical_alignment="center")
     with stem_cols[0]:
-        delete_clicked = st.button("❌", key=f"delete_q_{lo_id}_{idx}", help="Delete this question")
+        delete_clicked = st.button("", icon="❌",key=f"delete_q_{lo_id}_{idx}", help="Delete this question")
     with stem_cols[1]:
         q["stem"] = st.text_area(
             "Question",
