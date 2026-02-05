@@ -594,7 +594,7 @@ def render_step_4():
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
     
-    # Render table: LO text and per-LO number input (default 1)
+    # Render table: LO text and per-LO number input (default 0)
     st.markdown("##### How many questions would you like per learning objective?")
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
@@ -602,7 +602,7 @@ def render_step_4():
     for lo in ss["los"]:
         nq_key = f"nq_{lo['id']}"
         if nq_key not in ss:
-            ss[nq_key] = len(ss.get("questions", {}).get(lo["id"], [])) or 1
+            ss[nq_key] = 0
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
@@ -611,12 +611,11 @@ def render_step_4():
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
-            # Clear all existing questions (if any)
-            clear_questions(ss) # consider adding the newly generated questions to existing ones instead of clearing all?
             ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
-                nq = ss.get(f"nq_{lo['id']}", 1)
+                nq_key = f"nq_{lo['id']}"
+                nq = ss.get(nq_key, 0)
                 if nq==0:
                     continue
                 payload = generate_questions(
@@ -625,14 +624,15 @@ def render_step_4():
                     ss["module_text"],
                     n_questions=nq,
                 )
-
-                ss["questions"][lo["id"]] = payload["questions"]
+                existing_questions = ss["questions"].setdefault(lo["id"], [])
+                existing_questions.extend(payload["questions"])
                 # store signature for question generation
                 lo["generation_sig"] = sig_question_gen(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
+                ss[nq_key] = 0
             # After regeneration, update questions_sig
             # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
