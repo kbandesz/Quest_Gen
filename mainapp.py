@@ -167,17 +167,18 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
     
-    with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
-        # Display currently uploaded files
-        if ss["course_files"]:
+    if ss["course_files"]:
+        with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
+            # Display currently uploaded files
+            #if ss["course_files"]:
             st.caption("Currently uploaded files (To change, use file picker above):")
             current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
             st.markdown(current_files)
 
-        # Display token count & preview from session (stable across reruns)
-        st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
-        st.caption("Preview first 5,000 characters")
-        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+            # Display token count & preview from session (stable across reruns)
+            st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
     #  In mock mode, pre-fill with example
