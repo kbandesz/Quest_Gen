@@ -601,7 +601,7 @@ def render_step_4():
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
     
     # Render table: LO text and per-LO number input (default 0)
-    st.markdown("##### How many questions would you like per learning objective?")
+    st.markdown("##### How many new questions would you like to generate per learning objective?")
     if ss.pop("reset_question_counts", False):
         for lo in ss["los"]:
             ss[f"nq_{lo['id']}"] = 0

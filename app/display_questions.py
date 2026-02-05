@@ -58,13 +58,6 @@ def clear_deleted_question_widget_state(lo_id: str, q: Dict[str, Any]) -> None:
         st.session_state.pop(key, None)
 
 
-def clear_reindexed_question_widget_state(lo_id: str, deleted_idx: int, qs: list) -> None:
-    """Backwards-compatible no-op for older index-based widget cleanup calls."""
-    # Legacy index-based keys are not used anymore. Questions now use stable
-    # per-question widget IDs, so there is no reindexing work to perform.
-    del lo_id, deleted_idx, qs
-
-
 def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
     """
     Render a question with editable fields for stem, options, and metadata.
