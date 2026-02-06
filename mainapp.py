@@ -358,6 +358,17 @@ def render_step_3():
             """)
     st.write("---")
 
+    if ss["MOCK_MODE"] and not ss["los"]:
+        ss["los"].append({
+            "id": str(uuid.uuid4()),
+            "text": "Mock objective 1",
+            "intended_level": "Apply",
+            "alignment": None,
+            "final_text": None,
+            "alignment_sig": None,
+            "generation_sig": None,
+        })
+
 
     # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
