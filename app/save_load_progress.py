@@ -14,26 +14,26 @@ ss = st.session_state
 # excluded so that rehydrating the session only brings back durable data.
 DOMAIN_STATE_KEYS = {
     "MOCK_MODE",
-    "__prev_mock_mode__",
+    # "__prev_mock_mode__",
     "OPENAI_MODEL",
     "course_files",
     "course_text",
     "course_tokens",
     "outline_guidance",
     "outline",
-    "outline_sig",
-    "outline_doc_sig",
-    "outline_docx_file",
+    # "outline_sig",
+    # "outline_doc_sig",
+    # "outline_docx_file",
     "module_files",
     "module_text",
     "module_tokens",
     "module_sig",
     "los",
     "questions",
-    "questions_sig",
+    # "questions_sig",
     "include_opts",
-    "prev_build_inc_opts",
-    "docx_file",
+    # "prev_build_inc_opts",
+    # "docx_file",
 }
 
 

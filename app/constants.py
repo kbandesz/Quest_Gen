@@ -9,29 +9,29 @@ MODULE_TOKEN_LIMIT = 27_000
 
 # Module structure guidance
 COURSE_STRUCTURE_GUIDANCE = """
-Courses have the following **structure**:
-1. Module
-    1. Section
-        1. Unit
+Courses have one or more modules with the following structure:
 
-A course may have multiple **modules**.
-- **Module Duration:** 2-3 hours of learning
-  - includes ALL learning content elements (text, videos, assessments, activities, etc.)
-  - rough estimate: 9,000 words (15 pages) of text per hour
-- **Sections:** 3-5 per module, each with 1-2 learning objectives encompassing units
-- **Units:** Multiple per section, each with a single granular learning objective
-- **Balance of modalities:** Mix text, graphics, video, activities, etc.
+1. Module  
+&nbsp;&nbsp;1.1. Section  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1.1. Unit  
+
+- **Duration:** Each module represents a thematic area of the course and typically entails 2-3 hours of learning seating time.
+- **Sections:** Sections are larger sub-themes within each module. There are typically 3-5 sections per module.
+- **Units:** Units are granular topical “pages” of each section. There are typically 3-7 units per section.
+
+For more guidance on best practices and online course components, review the following resources:
+- [Content Authoring Best Practices for Instuctors](https://intlmonetaryfund.sharepoint.com/:w:/r/teams/Section-OLTeam-ICDIP/_layouts/15/Doc.aspx?sourcedoc=%7BD6716FFB-F64C-422F-B9FE-AD053F5A1542%7D&file=Course%20Authoring%20Best%20Practices%20V4.0%20Dec16.docx&action=default&mobileredirect=true)
+- [Module Plan Template](https://intlmonetaryfund.sharepoint.com/:w:/r/teams/Section-OLTeam-ICDIP/_layouts/15/Doc.aspx?sourcedoc=%7BA4730DC6-96DF-4D23-ADA4-B391B2277681%7D&file=IMFx%20Module%20Plan%20Template_FINAL.docx&action=default&mobileredirect=true)
 """
 
 COURSE_STRUCTURE_VISUAL = "assets/course_structure.png"
 
 # Bloom levels and definitions
 BLOOM_DEF = """
-**Bloom's Taxonomy** is an important educational framework that categorizes different levels of cognitive
+To write effective learning objectives, you can use **Bloom's Taxonomy** which is an important educational framework that categorizes different levels of cognitive
 processes involved in learning. When writing learning objectives, consider the complexity of the cognitive
 skills you want the learners to acquire or demonstrate (and that they can feasibly acquire or
 demonstrate).  
-_To learn more:_ [Using Bloom's Taxonomy to Write Effective Learning Objectives](https://tips.uark.edu/using-blooms-taxonomy/)
 """
 
 BLOOM_LEVEL_DEFS = {
@@ -77,11 +77,14 @@ LO_WRITING_TIPS = {
 }
 
 # Questions writing guidance
-QUESTION_TIPS = {
-        "stem_writing": "Keep stems clear and complete. Avoid partial sentences.",
-        "distractor_writing": "Make distractors plausible but clearly incorrect.",
-        "feedback_writing": "Explain why each option is correct or incorrect."
-}
+QUESTION_TIPS = """
+Once the learning objectives are finalized, the next step is to identify the evidence for evaluating whether those objectives have been achieved.
+This is where assessments play a key role. Assessments consist of graded questions designed to measure the learner's performance and determine
+ how effectively they have met the intended learning outcomes.
+ 
+ Click here for more information and guidance about developing questions:
+ [Guidance on Activities and Assessments](https://intlmonetaryfund.sharepoint.com/:w:/r/teams/Section-OLTeam-ICDIP/_layouts/15/Doc.aspx?sourcedoc=%7BD7BFD4C0-D9E9-4BC6-905D-9EB0630891A6%7D&file=ONE-pager_Activities_Assessments_Tests_General%20guidelines_with%20TEMPLATE.docx&action=default&mobileredirect=true)
+"""
 
 ############################################
 # MOCK MODE - No API calls (for offline testing and demos)

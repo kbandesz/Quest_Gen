@@ -5,22 +5,30 @@ from typing import Dict, Any, List
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions
-from app.export_docx import build_outline_docx, build_questions_docx
+from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
+from app.display_questions import (
+    clear_deleted_question_widget_state,
+    create_empty_question,
+    display_editable_question,
+    display_static_question,
+)
 from app.save_load_progress import save_load_panel, apply_pending_restore
 import app.constants as const
 from app.session_state_utils import (
+    init_session_state,
     sig_alignment,
     sig_question_gen,
-    sig_outline,
+    #sig_outline,
     sig_questions,
     compute_step_readiness,
     clear_outline_widget_state,
     clear_alignment,
     clear_questions,
-    clear_module_dependent_outputs,
+    #clear_module_dependent_outputs,
     apply_module_content,
-    reset_uploaded_content,
+    #reset_uploaded_content,
+    reset_session,
 )
 
 ################################################
@@ -34,38 +42,7 @@ apply_pending_restore()
 
 # Initialize session state
 ss = st.session_state
-ss.setdefault("current_step", 1)
-ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
-
-ss.setdefault("course_files", [])
-ss.setdefault("course_text", "")
-ss.setdefault("course_tokens", 0)
-ss.setdefault("outline_guidance", "")
-
-ss.setdefault("module_files", [])
-ss.setdefault("module_text", "")
-ss.setdefault("module_tokens", 0)
-ss.setdefault("module_sig", "")
-
-ss.setdefault("los", [])
-ss.setdefault("questions", {})
-ss.setdefault("questions_sig", None)
-ss.setdefault("show_lo_import_dialog", False)
-ss.setdefault("lo_import_selection", [])
-
-ss.setdefault("include_opts", {})
-ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
-ss.setdefault("docx_file", "")
-ss.setdefault("outline_docx_file", b"")
-ss.setdefault("outline_sig", None)
-ss.setdefault("outline_doc_sig", None)
-
-ss.setdefault("MOCK_MODE", True)
-#ss.setdefault("__prev_mock_mode__", ss["MOCK_MODE"])
-ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
-
-ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
-
+init_session_state(ss)
 
 ################################################
 # Title and warning based on current mock setting
@@ -77,41 +54,23 @@ st.markdown("##### _Smarter course design—powered by AI._")
 # Sidebar for settings
 ################################################
 with st.sidebar:
-    # Resetting everything and starting over
-    if st.button("Reset session"):
-        ss["uploader_key"] += 1
-        ss.clear()
-        st.rerun()
 
-    # If mock mode was toggled: confirm and clear everything and go back to Step 1
-    @st.dialog("Confirm Action", dismissible=False, width="small")
-    def _on_mock_mode_change():
-        st.write("This will will clear everything. Are you sure you want to proceed?")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Confirm"):
-                # If mock mode was toggled, clear everything and go back to Step 1
-                ss.pop("outline", None)
-                clear_module_dependent_outputs(ss)
-                reset_uploaded_content(ss)
-                ss["current_step"] = 1
-                st.rerun() # Rerun to dismiss the dialog and update the app state
-        with col2:
-            if st.button("Cancel"):
-                #st.session_state.show_confirm_dialog = False # Optionally manage dialog visibility
-                ss["MOCK_MODE"] = not ss["MOCK_MODE"]
-                st.rerun()
-
-    # Change mock mode and model
+    # --- Settings ---
     st.markdown("### Settings")
 
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=_on_mock_mode_change)
+    # Toggle mock mode
+    st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
+    # Select model
     model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
-    # Save/load progress
+    # Save/load progress ---
     save_load_panel()
+
+    # Reset button to start over with clean slate
+    if st.button("Reset session"):
+        reset_session(ss)
 
 
 ################################################
@@ -129,18 +88,14 @@ def render_stepper():
     
     steps = [outline, upload, LOs, quest_gen, export]
 
-    #############
     # Short button labels (clickable)
     step_labels = [
         "📚 1. Outline",
-        "📂 2a. Upload ->",
+        "📂 2a. Module ->",
         "🎯 2b. Objectives ->",
         "✍️ 2c. Questions ->",
-        "📄 2d. Export",
+        "📄 2d. Final Output",
     ]
-
-
-    #########
 
     # wrap the whole stepper in a bordered "card"
     with st.container(border=True):
@@ -166,9 +121,6 @@ def render_stepper():
                     #with st.container(border=True):
                     st.markdown(f":grey[{step_name}]")
 
-    # crisp separation from the rest of the page
-    #st.divider()
-
 ################################################
 # 1 Course Outline
 ################################################
@@ -176,16 +128,12 @@ def render_step_1():
     st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
-Investing time upfront in the outline will make the presentation of content more effective and will streamline the entire course development process.
+A course outline acts as a blueprint for the course, ensuring a goal-oriented, logical, and structured learning experience for participants. Once finalized, it helps streamline the entire course development process.
 """)
     with st.expander("**Structure of an IMF course**", expanded=False):
-        cols = st.columns([3, 1], gap="medium")
-        with cols[0]:
-            st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
-        with cols[1]:
-            st.image(const.COURSE_STRUCTURE_VISUAL, width="stretch")
+        st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
     
-    st.markdown("This application can provide you AI-support to design a course outline based on any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
+    st.markdown("The first step (1. Outline) of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
     files = st.file_uploader(
         "**Upload Source Materials (e.g., papers, presentations, notes)**",
@@ -219,17 +167,18 @@ Investing time upfront in the outline will make the presentation of content more
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
     
-    with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
-        # Display currently uploaded files
-        if ss["course_files"]:
+    if ss["course_files"]:
+        with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
+            # Display currently uploaded files
+            #if ss["course_files"]:
             st.caption("Currently uploaded files (To change, use file picker above):")
             current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
             st.markdown(current_files)
 
-        # Display token count & preview from session (stable across reruns)
-        st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
-        st.caption("Preview first 5,000 characters")
-        st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+            # Display token count & preview from session (stable across reruns)
+            st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # Additional instructor guidance for the AI
     #  In mock mode, pre-fill with example
@@ -250,9 +199,9 @@ Investing time upfront in the outline will make the presentation of content more
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             clear_outline_widget_state(ss)
             ss['outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
-            ss["outline_sig"] = sig_outline(ss.get("outline"))
-            ss["outline_docx_file"] = b""
-            ss["outline_doc_sig"] = None
+            # ss["outline_sig"] = sig_outline(ss.get("outline"))
+            # ss["outline_docx_file"] = b""
+            # ss["outline_doc_sig"] = None
             st.rerun()
 
     # --- Display/Edit/Export Output ---
@@ -267,47 +216,42 @@ Investing time upfront in the outline will make the presentation of content more
         else:
             display_static_outline(ss['outline'])
 
-        current_outline_sig = sig_outline(ss.get("outline"))
-        if ss.get("outline_sig") != current_outline_sig:
-            ss["outline_sig"] = current_outline_sig
+        # current_outline_sig = sig_outline(ss.get("outline"))
+        # if ss.get("outline_sig") != current_outline_sig:
+        #     ss["outline_sig"] = current_outline_sig
 
-        # Export outline to DOCX
+        # --- Export outline ---
         st.markdown("---")
         st.markdown("#### Export outline")
-        cols = st.columns([1, 1])
-        with cols[0]:
-            if st.button("Build outline DOCX"):
-                ss["outline_docx_file"] = build_outline_docx(ss["outline"])
-                ss["outline_doc_sig"] = current_outline_sig
-        with cols[1]:
-            doc_ready = bool(ss.get("outline_docx_file")) and ss.get("outline_doc_sig") == current_outline_sig
-            if ss.get("outline_docx_file") and not doc_ready:
-                help_msg = "Outline changed. Rebuild the DOCX to download the latest version."
-            else:
-                help_msg = "Build the outline DOCX before downloading."
-            st.download_button(
-                "Download outline",
-                data=ss.get("outline_docx_file", b""),
-                file_name="course_outline.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                disabled=not doc_ready,
-                help=help_msg if not doc_ready else "",
-            )
+
+        outline = ss.get("outline")
+
+        st.download_button(
+            "Download outline",
+            data=lambda: build_outline_docx_cached(outline),
+            file_name="course_outline.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            disabled=not bool(outline),
+            help="Download outline as a Word file.",
+            type="primary" if bool(outline) else "secondary"
+        )
 
     # --- Navigation ---
     st.divider()
-    if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
-        ss["current_step"] = 2
-        st.rerun()
+    cols = st.columns([1, 1])
+    with cols[1]:
+        if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
+            ss["current_step"] = 2
+            st.rerun()
+
 ################################################
-# 2 Upload Course Content
+# 2 Upload Module Content
 ################################################
 def render_step_2():
-    help_upload = """You can upload any content that you will use to develop the module.
+    st.header("📂 Upload Module Material")  
+    st.markdown( """You can upload any content that you will use to develop the module.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the module content."""
-    st.header("📂 Upload Module Material", help=help_upload)
-
+                presentations, or any other documents that you plan to use for writing the module content.""")
     files: List[Any] = []
     upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
     with upload_col:
@@ -323,7 +267,7 @@ def render_step_2():
     with import_col:
         import_disabled = not bool(ss.get("course_text"))
         if st.button(
-            "Import from outline",
+            "📥 Import source files from Outline step",
             help="Import all source material uploaded for the course outline",
             disabled=import_disabled,
         ):
@@ -403,28 +347,43 @@ def render_step_3():
     st.markdown(const.BLOOM_DEF)
     # Visual reference (expandable pyramid)
     with st.expander("Bloom's Taxonomy", expanded=False):
-        cols = st.columns([1, 3, 1]) # Adjust the ratios as needed
-        with cols[1]:
-            st.image(const.BLOOM_PYRAMID_IMAGE, width="stretch")
+        _, center_col, _ = st.columns([1, 3, 1]) # Adjust the ratios as needed
+        with center_col:
+            st.image(const.BLOOM_PYRAMID_IMAGE, width=500)
+        
+        st.markdown("""
+            To learn more:
+            - [Using Bloom's Taxonomy to Write Effective Learning Objectives](https://tips.uark.edu/using-blooms-taxonomy/)
+            - [Writing Course and Module Learning Objectives](https://intlmonetaryfund.sharepoint.com/teams/Section-OLTeam-ICDIP/Shared%20Documents/Forms/AllItems.aspx?id=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives%2FBloom%27s%20Taxonomy%20%2D%20Objectives%2Epdf&parent=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives)
+            """)
     st.write("---")
+
+    if ss["MOCK_MODE"] and not ss["los"]:
+        ss["los"].append({
+            "id": str(uuid.uuid4()),
+            "text": "Mock objective 1",
+            "intended_level": "Apply",
+            "alignment": None,
+            "final_text": None,
+            "alignment_sig": None,
+            "generation_sig": None,
+        })
 
 
     # --- Per-LO UI ---
     for i, lo in enumerate(list(ss["los"])):
-        lo_text_key = f"lo_text_{lo['id']}"
-        lo_level_key = f"lo_level_{lo['id']}"
-        prev_text = lo.get("text", "")
-        prev_level = lo.get("intended_level", "Remember")
-
-        is_final = bool(lo.get("final_text"))
 
         # Seed widget state only once, on creation
+        lo_text_key = f"lo_text_{lo['id']}"
+        lo_level_key = f"lo_level_{lo['id']}"
+
         if lo_text_key not in ss:
-            ss[lo_text_key] = prev_text
+            ss[lo_text_key] = lo.get("text", "")
         if lo_level_key not in ss:
-            ss[lo_level_key] = prev_level
+            ss[lo_level_key] = lo.get("intended_level", None)
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
+        is_final = bool(lo.get("final_text"))
         module_sig = ss.get("module_sig", "")
         current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
@@ -448,11 +407,16 @@ def render_step_3():
                 st.warning(f"⚠️ Avoid vague verbs like {', '.join(const.LO_WRITING_TIPS['avoid_verbs'])}. See tips above.")
 
             # --- Bloom level selector ---
-            sel = st.selectbox("Intended Bloom level", const.BLOOM_LEVEL_DEFS.keys(), key=lo_level_key, disabled=is_final,
-                               help="Select the intended Bloom's taxonomy level.",
+            bloom_options = list(const.BLOOM_LEVEL_DEFS.keys())
+            sel = st.selectbox("Intended Bloom level", options=bloom_options, key=lo_level_key,
+                               index=None, placeholder="Select ...",
+                               disabled=is_final, help="Select the intended Bloom's taxonomy level.",
                                label_visibility="visible")
             lo["intended_level"] = sel
-            st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
+            if sel is None:
+                 st.info("Choose a Bloom level to see the definition and common verbs.")
+            else:
+                st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
             
             # --- Visual cue for finalized ---            
             if is_final:
@@ -464,8 +428,9 @@ def render_step_3():
             # --- Per-LO buttons ---
             btn_cols = st.columns([1, 1, 1, 1])
             with btn_cols[0]:
+                can_check = (not is_final) and bool(lo["text"].strip()) and (lo["intended_level"] is not None)
                 if st.button("Alignment Check", key=f"align_{lo['id']}_btn",
-                             disabled=is_final, type="primary",
+                             disabled=not can_check, type="primary",
                              help="Have another pair of AI eyes check your LO."
                              ):
                     with st.spinner("Checking alignment..."):
@@ -473,7 +438,7 @@ def render_step_3():
                         lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
-                if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=is_final):
+                if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=not can_check):
                     lo["final_text"] = lo["text"]
                     # Invalidate questions if needed
                     current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
@@ -516,7 +481,7 @@ def render_step_3():
             ss["los"].append({
                 "id": new_id,
                 "text": "",
-                "intended_level": "Remember",
+                "intended_level": None,
                 "alignment": None,
                 "final_text": None,
                 "alignment_sig": None,
@@ -571,7 +536,7 @@ def render_step_3():
                         ss["los"].append({
                             "id": new_id,
                             "text": objective_text,
-                            "intended_level": "Remember",
+                            "intended_level": None,
                             "alignment": None,
                             "final_text": None,
                             "alignment_sig": None,
@@ -584,7 +549,7 @@ def render_step_3():
     # 2) Open the dialog from a button
     import_help = " Choose a module from your outline and import its learning objectives"
     with import_col:
-        if st.button("📥 Import from Outline", key="import_lo_from_outline",
+        if st.button("📥 Import objectives from Outline", key="import_lo_from_outline",
                      help=import_help, disabled=not has_outline_modules):
             # Prepare labels each time dialog is opened
             module_labels, label_to_index = [], {}
@@ -628,7 +593,7 @@ def render_step_3():
     st.divider()
     cols = st.columns([1, 1])
     with cols[0]:
-        if st.button("← Back: Upload Material"):
+        if st.button("← Back: Module Materials"):
             ss["current_step"] = 2
             st.rerun()
     with cols[1]:
@@ -641,93 +606,108 @@ def render_step_3():
 #################################################
 def render_step_4():
     st.header("✍️ Generate Questions")
-    st.markdown("[Tips or links to resources on writing good assessment questions.]")
+    st.markdown(const.QUESTION_TIPS)
     # Helper to check if we can run generation
     def can_generate(ss) -> bool:
         return bool(ss["module_text"] and ss["los"] and all(lo.get("final_text") for lo in ss["los"]))
     
-    # Render table: LO text and per-LO number input (default 1)
-    st.markdown("#### Questions per learning objective")
+    # Render table: LO text and per-LO number input (default 0)
+    st.markdown("##### How many new questions would you like to generate per learning objective?")
+    if ss.pop("reset_question_counts", False):
+        for lo in ss["los"]:
+            ss[f"nq_{lo['id']}"] = 0
+
     header_cols = st.columns([6, 1])
     header_cols[0].markdown("**Learning objective**")
     header_cols[1].markdown("**# of Questions**")
     for lo in ss["los"]:
         nq_key = f"nq_{lo['id']}"
         if nq_key not in ss:
-            ss[nq_key] = len(ss.get("questions", {}).get(lo["id"], [])) or 1
+            ss[nq_key] = 0
         lo_display = lo.get("final_text") or lo.get("text") or "(no text)"
         row_cols = st.columns([6, 1])
         row_cols[0].markdown(lo_display)
-        row_cols[1].number_input("", min_value=1, max_value=10,
+        row_cols[1].number_input("", min_value=0, max_value=5,
                                  key=nq_key, label_visibility="collapsed")
 
     if st.button("Generate", type="primary", disabled=not can_generate(ss)):
         with st.spinner("Generating questions..."):
-            # Clear all existing questions (if any)
-            clear_questions(ss)
+            ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
             for lo in ss["los"]:
-                nq = ss.get(f"nq_{lo['id']}", 1)
+                nq_key = f"nq_{lo['id']}"
+                nq = ss.get(nq_key, 0)
+                if nq==0:
+                    continue
                 payload = generate_questions(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss["module_text"],
                     n_questions=nq,
                 )
-
-                ss["questions"][lo["id"]] = payload["questions"]
+                existing_questions = ss["questions"].setdefault(lo["id"], [])
+                existing_questions.extend(payload["questions"])
                 # store signature for question generation
                 lo["generation_sig"] = sig_question_gen(
                     lo.get("final_text"),
                     lo["intended_level"],
                     ss.get("module_sig", "")
                 )
+            ss["reset_question_counts"] = True
             # After regeneration, update questions_sig
-            ss["questions_sig"] = sig_questions(ss["questions"])
+            # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
-
-    # Go over all LOs
+    # Check if there are any questions to display
+    # has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    # has_questions = True
+    # Switch between static and editable questions view
+    # if has_questions:
+    st.write("")
+    st.toggle(
+        "Editable questions",
+        key="editable_questions",
+        value=False,
+        help=(
+            "Switch between editable and static question views. In editable mode, you can refine stems, options, "
+            "and rationales."
+        ),
+    )
+    # Go over all LOs, each in a container
     for lo in ss["los"]:
-        qs=ss["questions"].get(lo["id"],[])
-        if not qs:
-            continue
+        qs = ss["questions"].get(lo["id"], [])
+        # if not qs:
+        #     continue
         with st.container(border=True):
-            st.subheader(f"{lo.get('final_text')}")
-            for idx,q in enumerate(qs):
-                with st.expander(f"Question {idx+1}", expanded=False):
-                    # Question stem
-                    q["stem"]=st.text_area(f"Question {idx+1}", q["stem"], key=f"stem_{lo['id']}_{idx}",
-                                        height=70, label_visibility="collapsed")
-                    # Answer options
-                    for opt in q["options"]:
-                        cols = st.columns([1, 30])
-                        with cols[0]:
-                            st.markdown(f"**({opt['id']})**")
-                        with cols[1]:
-                            opt["text"]=st.text_input(f"**({opt['id']})**", opt["text"],
-                                                    key=f"opt_{lo['id']}_{idx}_{opt['id']}",
-                                                    label_visibility="collapsed")
-                    # Correct answer
-                    current=["A","B","C","D"].index(q["correct_option_id"])
-                    q["correct_option_id"]=st.radio("Correct option", ["A","B","C","D"], index=current, horizontal=True, key=f"radio_{lo['id']}_{idx}")
-                    # Feedback for each option
-                    st.markdown("Feedback")
-                    for opt in q["options"]:
-                        opt["option_rationale"]=st.text_area(f"**({opt['id']})**", opt.get("option_rationale",""),
-                                                             key=f"rat_{lo['id']}_{idx}_{opt['id']}", height=70)
-                    # Content reference and cognitive rationale
-                    q["contentReference"]=st.text_area("Content reference", q.get("contentReference",""),
-                                                       key=f"ref_{lo['id']}_{idx}", height=70)
-                    q["cognitive_rationale"]=st.text_area("Rationale for Bloom level", q.get("cognitive_rationale",""),
-                                                          key=f"cograt_{lo['id']}_{idx}", height=70)
+            st.subheader(lo.get("final_text"))
+            # Go over all questions for this LO
+            pending_delete_idx = None
+            for idx, q in enumerate(qs):
+                stem_preview = q.get("stem") or "(no question stem)"
+                with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
+                    # Display static or editable question details based on toggle
+                    if ss["editable_questions"]:
+                        if display_editable_question(lo["id"], idx, q):
+                            pending_delete_idx = idx
+                    else:
+                        display_static_question(q)
 
-    # After all widgets have applied edits, detect real changes
-    new_q_sig = sig_questions(ss.get("questions", {}))
-    if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
-        # User changed questions → previously built DOCX is now stale
-        ss["docx_file"] = "" #None
-    ss["questions_sig"] = new_q_sig
+            if ss["editable_questions"]:
+                if pending_delete_idx is not None:
+                    deleted_question = qs.pop(pending_delete_idx)
+                    clear_deleted_question_widget_state(lo["id"], deleted_question)
+                    st.rerun()
+
+                if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
+                    qs.append(create_empty_question())
+                    st.rerun()
+
+    # # After all widgets have applied edits, detect real changes
+    # new_q_sig = sig_questions(ss.get("questions", {}))
+    # if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
+    #     # User changed questions → previously built DOCX is now stale
+    #     ss["docx_file"] = "" #None
+    # ss["questions_sig"] = new_q_sig
 
     # --- Navigation ---
     st.divider()
@@ -742,7 +722,7 @@ def render_step_4():
             st.rerun()
     
 ################################################
-# 5 Export
+# 5 Export Questions
 ################################################
 def render_step_5():
 
@@ -783,24 +763,48 @@ def render_step_5():
         "rationale": inc_rationale,
     }
 
-    st.markdown("")
-    cols = st.columns([1,1])
-    with cols[0]:
-        if st.button("Build DOCX file"):
-            ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
-            ss["prev_build_inc_opts"] = ss['include_opts']
-    with cols[1]:
-        no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
-        help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
-        st.download_button(
-            "Download",
-            data=ss.get("docx_file", ""),
-            file_name="assessment_questions.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            disabled = no_docx_for_selection,
-            help=help_string if no_docx_for_selection else ""
-            )        
     
+    
+    # cols = st.columns([1,1])
+    # with cols[0]:
+    #     if st.button("Build question DOCX"):
+    #         ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
+    #         ss["prev_build_inc_opts"] = ss['include_opts']
+    # with cols[1]:
+    #     no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
+    #     help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
+    #     st.download_button(
+    #         "Download questions",
+    #         data=ss.get("docx_file", ""),
+    #         file_name="assessment_questions.docx",
+    #         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    #         disabled = no_docx_for_selection,
+    #         type="primary" if not no_docx_for_selection else "secondary",
+    #         help=help_string if no_docx_for_selection else ""
+    #         )        
+
+    # Download button with on-the-fly generation (cached)
+    st.markdown("")
+    questions = ss.get("questions", {})
+    los = ss.get("los", [])
+    include = ss.get("include_opts", {})
+
+    doc_ready = bool(los) and bool(questions)
+
+    st.download_button(
+        "Download",
+        data=lambda: build_questions_docx_cached(
+            los,
+            questions,
+            include,
+        ),
+        file_name="assessment_questions.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        disabled=not doc_ready,
+        help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
+        type="primary" if doc_ready else "secondary"
+    )
+
     # --- Navigation ---
     st.divider()
     if st.button("← Back: Generate Questions"):

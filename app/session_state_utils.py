@@ -8,6 +8,41 @@ from typing import Any, Dict, Iterable, List, MutableMapping, Optional
 from streamlit.runtime.state import SessionStateProxy
 import streamlit as st
 
+####### Session state defaults ########
+def init_session_state(ss: SessionStateProxy) -> None:
+    """Seed all expected session state keys with defaults."""
+
+    ss.setdefault("current_step", 1)
+    ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
+
+    ss.setdefault("course_files", [])
+    ss.setdefault("course_text", "")
+    ss.setdefault("course_tokens", 0)
+    ss.setdefault("outline_guidance", "")
+
+    ss.setdefault("module_files", [])
+    ss.setdefault("module_text", "")
+    ss.setdefault("module_tokens", 0)
+    ss.setdefault("module_sig", "")
+
+    ss.setdefault("los", [])
+    ss.setdefault("questions", {})
+    # ss.setdefault("questions_sig", None)
+    ss.setdefault("show_lo_import_dialog", False)
+    ss.setdefault("lo_import_selection", [])
+
+    ss.setdefault("include_opts", {})
+    # ss.setdefault("prev_build_inc_opts", {})  # to detect changes in export options
+    # ss.setdefault("docx_file", "")
+    # ss.setdefault("outline_docx_file", b"")
+    #ss.setdefault("outline_sig", None)
+    # ss.setdefault("outline_doc_sig", None)
+
+    ss.setdefault("MOCK_MODE", True)
+    ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
+
+    ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
+
 ######## Signature computation helpers ########
 
 def sig_outline(outline: Optional[Dict[str, Any]]) -> str:
@@ -35,11 +70,11 @@ def sig_question_gen(final_lo_text: str, intended_level: str, module_sig: str) -
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def sig_questions(questions_by_lo: Dict[str, Iterable[Dict[str, Any]]]) -> str:
+def sig_questions(questions: Dict[str, Iterable[Dict[str, Any]]]) -> str:
     """Stable signature encompassing all editable question fields."""
     parts: List[str] = []
-    for lo_id in sorted(questions_by_lo.keys()):
-        qs = list(questions_by_lo.get(lo_id) or [])
+    for lo_id in sorted(questions.keys()):
+        qs = list(questions.get(lo_id) or [])
         for qi, question in enumerate(qs):
             parts.append(f"{lo_id}#{qi}|stem:{question.get('stem', '')}")
             parts.append(f"{lo_id}#{qi}|correct:{question.get('correct_option_id', '')}")
@@ -105,24 +140,24 @@ def clear_questions(ss: SessionStateProxy, lo_id: Optional[str] = None) -> None:
             questions.pop(lo_id, None)
         else:
             questions.clear()
-            ss.pop("questions_sig", None)
+            # ss.pop("questions_sig", None)
     else:
         if not lo_id:
             ss.pop("questions", None)
-            ss.pop("questions_sig", None)
+            # ss.pop("questions_sig", None)
 
-    ss.pop("docx_file", "")
+    # ss.pop("docx_file", "")
     include_opts = ss.get("include_opts")
     if isinstance(include_opts, MutableMapping):
         include_opts.clear()
     else:
         ss.pop("include_opts", None)
 
-    prev_opts = ss.get("prev_build_inc_opts")
-    if isinstance(prev_opts, MutableMapping):
-        prev_opts.clear()
-    else:
-        ss.pop("prev_build_inc_opts", None)
+    # prev_opts = ss.get("prev_build_inc_opts")
+    # if isinstance(prev_opts, MutableMapping):
+    #     prev_opts.clear()
+    # else:
+    #     ss.pop("prev_build_inc_opts", None)
 
 
 def clear_module_dependent_outputs(ss: SessionStateProxy) -> None:
@@ -167,3 +202,29 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
+
+@st.dialog("Confirm Action", dismissible=False, width="small")
+def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None:
+    """Clear all session state and return to Step 1.
+    Args:
+        ss: The Streamlit session state proxy.
+        mock_mode_change: Whether this reset is triggered by a change in mock mode setting.
+    """
+    st.write("This will will clear everything. Are you sure you want to proceed?")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Confirm"):
+            # Clear everything and go back to Step 1
+            current_mock_mode = ss.get("MOCK_MODE")
+            next_uploader_key = ss.get("uploader_key", 0) + 1
+            #ss["uploader_key"] += 1
+            ss.clear()
+            ss["uploader_key"] = next_uploader_key
+            #if mock_mode_change:
+            ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+            st.rerun() # Rerun to dismiss the dialog and update the app state
+    with col2:
+        if st.button("Cancel"):
+            if mock_mode_change:
+                ss["MOCK_MODE"] = not ss["MOCK_MODE"] # revert the toggle if cancelled
+            st.rerun()
