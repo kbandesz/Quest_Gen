@@ -245,7 +245,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             st.rerun()
 
 ################################################
-# 2 Upload Course Content
+# 2 Upload Module Content
 ################################################
 def render_step_2():
     st.header("📂 Upload Module Material")  
