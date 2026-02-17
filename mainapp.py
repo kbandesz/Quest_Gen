@@ -61,7 +61,7 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
+    model_options = ["gpt-5-nano", "gpt-5-mini", "gpt-5", "gpt-5.2"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
