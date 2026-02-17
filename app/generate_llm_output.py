@@ -161,7 +161,7 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
                     "content": [{"type": "input_text", "text": user}],
                 },
             ],
-            temperature=temperature,
+            #temperature=temperature,
             text={"format": {"type": "json_object"}},
             max_output_tokens=max_tokens,
         )
