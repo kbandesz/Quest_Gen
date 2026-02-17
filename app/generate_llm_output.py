@@ -88,13 +88,83 @@ def _extract_response_text(resp: Any) -> str:
     raise ValueError("No response text returned by model.")
 
 
+def _safe_attr(obj: Any, attr: str, default: Any = None) -> Any:
+    """Safely fetch a nested attribute from SDK objects."""
+    try:
+        return getattr(obj, attr, default)
+    except Exception:
+        return default
+
+
+def _collect_response_debug(resp: Any) -> Dict[str, Any]:
+    """Collect debug metadata from a responses.create payload."""
+    error = _safe_attr(resp, "error")
+    incomplete_details = _safe_attr(resp, "incomplete_details")
+    usage = _safe_attr(resp, "usage")
+    return {
+        "response_id": _safe_attr(resp, "id"),
+        "model": _safe_attr(resp, "model"),
+        "status": _safe_attr(resp, "status"),
+        "incomplete_details": {
+            "reason": _safe_attr(incomplete_details, "reason"),
+        }
+        if incomplete_details
+        else None,
+        "error": {
+            "code": _safe_attr(error, "code") if error else None,
+            "message": _safe_attr(error, "message") if error else None,
+            "type": _safe_attr(error, "type") if error else None,
+        }
+        if error
+        else None,
+        "usage": {
+            "input_tokens": _safe_attr(usage, "input_tokens"),
+            "output_tokens": _safe_attr(usage, "output_tokens"),
+            "total_tokens": _safe_attr(usage, "total_tokens"),
+            "reasoning_tokens": _safe_attr(_safe_attr(usage, "output_tokens_details"), "reasoning_tokens"),
+        }
+        if usage
+        else None,
+    }
+
+
+def _collect_exception_debug(exc: Exception) -> Dict[str, Any]:
+    """Collect structured details from OpenAI/HTTP exceptions when available."""
+    debug: Dict[str, Any] = {
+        "exception_type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+    status_code = _safe_attr(exc, "status_code")
+    if status_code is not None:
+        debug["status_code"] = status_code
+
+    request_id = _safe_attr(exc, "request_id")
+    if request_id:
+        debug["request_id"] = request_id
+
+    body = _safe_attr(exc, "body")
+    if body:
+        debug["body"] = body
+
+    response = _safe_attr(exc, "response")
+    if response is not None:
+        response_text = _safe_attr(response, "text")
+        if response_text:
+            debug["response_text"] = response_text
+
+    return debug
+
+
 def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
     if _is_mock_mode():
         return {"mock":"on"}
     client = _get_client()
+    model = _get_model()
+
     try:
         resp = client.responses.create( # type: ignore
-            model=_get_model(),
+            model=model,
             input=[
                 {
                     "role": "system",
@@ -109,9 +179,23 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
             text={"format": {"type": "json_object"}},
             max_output_tokens=max_tokens,
         )
-        return parse_json_strict(_extract_response_text(resp))
     except Exception as e:
-        raise Exception(f"API call failed: {e}")
+        exception_debug = _collect_exception_debug(e)
+        raise RuntimeError(
+            f"API call failed. model={model} debug={exception_debug}"
+        ) from e
+
+    try:
+        return parse_json_strict(_extract_response_text(resp))
+    except Exception as parse_or_text_error:
+        response_debug = _collect_response_debug(resp)
+        hint = ""
+        if response_debug.get("incomplete_details", {}).get("reason") == "max_output_tokens":
+            hint = " Hint: response hit max_output_tokens; try increasing max_tokens or reducing prompt/context size."
+        raise RuntimeError(
+            "API call succeeded but response parsing failed. "
+            f"model={model} debug={response_debug}.{hint}"
+        ) from parse_or_text_error
 
    
 def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
