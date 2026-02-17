@@ -1,6 +1,7 @@
 # Generate AI responses (including mocks)
 import os
 #import msal
+import json
 import streamlit as st
 from openai import OpenAI
 from typing import Dict, Any
@@ -96,6 +97,46 @@ def _safe_attr(obj: Any, attr: str, default: Any = None) -> Any:
         return default
 
 
+def _to_debug_primitive(value: Any) -> Any:
+    """Convert SDK objects into JSON-serializable primitives for logs/errors."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_debug_primitive(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_debug_primitive(v) for v in value]
+
+    # Pydantic models (SDK objects) generally expose model_dump().
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return _to_debug_primitive(model_dump())
+        except Exception:
+            pass
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return _to_debug_primitive(to_dict())
+        except Exception:
+            pass
+
+    obj_dict = getattr(value, "__dict__", None)
+    if isinstance(obj_dict, dict) and obj_dict:
+        return {
+            str(k): _to_debug_primitive(v)
+            for k, v in obj_dict.items()
+            if not str(k).startswith("_")
+        }
+
+    return str(value)
+
+
+def _format_debug(debug: Dict[str, Any]) -> str:
+    """Format debug metadata as stable JSON for readability."""
+    return json.dumps(_to_debug_primitive(debug), ensure_ascii=False, sort_keys=True)
+
+
 def _collect_response_debug(resp: Any) -> Dict[str, Any]:
     """Collect debug metadata from a responses.create payload."""
     error = _safe_attr(resp, "error")
@@ -103,7 +144,7 @@ def _collect_response_debug(resp: Any) -> Dict[str, Any]:
         "response_id": _safe_attr(resp, "id"),
         "model": _safe_attr(resp, "model"),
         "status": _safe_attr(resp, "status"),
-        "incomplete_details": _safe_attr(resp, "incomplete_details"),
+        "incomplete_details": _to_debug_primitive(_safe_attr(resp, "incomplete_details")),
         "error": {
             "code": _safe_attr(error, "code") if error else None,
             "message": _safe_attr(error, "message") if error else None,
@@ -111,7 +152,7 @@ def _collect_response_debug(resp: Any) -> Dict[str, Any]:
         }
         if error
         else None,
-        "usage": _safe_attr(resp, "usage"),
+        "usage": _to_debug_primitive(_safe_attr(resp, "usage")),
     }
 
 
@@ -132,7 +173,7 @@ def _collect_exception_debug(exc: Exception) -> Dict[str, Any]:
 
     body = _safe_attr(exc, "body")
     if body:
-        debug["body"] = body
+        debug["body"] = _to_debug_primitive(body)
 
     response = _safe_attr(exc, "response")
     if response is not None:
@@ -171,12 +212,15 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
             response_debug = _collect_response_debug(resp)
             raise RuntimeError(
                 "API call succeeded but response parsing failed. "
-                f"model={model} debug={response_debug}"
+                f"model={model} debug={_format_debug(response_debug)}"
             ) from parse_or_text_error
+    except RuntimeError:
+        # Preserve structured RuntimeError messages from parsing failures.
+        raise
     except Exception as e:
         exception_debug = _collect_exception_debug(e)
         raise RuntimeError(
-            f"API call failed. model={model} debug={exception_debug}"
+            f"API call failed. model={model} debug={_format_debug(exception_debug)}"
         ) from e
 
    
