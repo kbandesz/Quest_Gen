@@ -39,7 +39,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
     # ss.setdefault("outline_doc_sig", None)
 
     ss.setdefault("MOCK_MODE", True)
-    ss.setdefault("OPENAI_MODEL", "gpt-4.1-nano")
+    ss.setdefault("OPENAI_MODEL", "gpt-5-nano")
 
     ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
 
