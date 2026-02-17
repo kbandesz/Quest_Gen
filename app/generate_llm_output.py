@@ -1,8 +1,10 @@
 # Generate AI responses (including mocks)
 import os
+#import msal
 import streamlit as st
 from openai import OpenAI
 from typing import Dict, Any
+#import json
 
 from . import prompts
 from .parse_llm_output import parse_json_strict, validate_alignment_payload, validate_questions_payload
@@ -24,6 +26,25 @@ def _get_model() -> str:
     return ss.get("OPENAI_MODEL", DEFAULT_MODEL)
 
 
+####### MSAL authentication (interactive) ########
+# def _acquire_access_token_interactive() -> str:
+#     """Acquire an access token interactively using MSAL."""
+
+#     # Read config from environment variables
+#     CLIENT_ID = os.getenv("CLIENT_ID")
+#     TENANT_ID = os.getenv("TENANT_ID")
+#     AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+#     SCOPE = [".default"]
+
+#     app = msal.PublicClientApplication(client_id=CLIENT_ID, authority=AUTHORITY)
+#     result = app.acquire_token_interactive(scopes=SCOPE)
+#     if not result or "access_token" not in result:
+#         print("Failed to acquire access token:")
+#         print(json.dumps(result, indent=2))
+#         raise RuntimeError("Authentication failed")
+#     return result["access_token"]
+
+ 
 def _get_client() -> OpenAI:
     """Get or create the OpenAI client, cached in session state."""
     cli = ss.get("_openai_client")
@@ -31,6 +52,22 @@ def _get_client() -> OpenAI:
         cli = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         ss["_openai_client"] = cli
     return cli
+
+# def _get_client() -> OpenAI:
+#     """Get or create the OpenAI client, cached in session state."""
+#     cli = ss.get("_openai_client")
+#     if cli is None:
+#         access_token = _acquire_access_token_interactive()
+#         cli = OpenAI(
+#             api_key="DUMMY",  # OpenAI SDK requires a value; your gateway uses api-key header instead
+#             base_url=os.getenv("BASE_URL"),
+#             default_headers={
+#                 "api-key": os.getenv("API_KEY"),
+#                 "Authorization": f"Bearer {access_token}",
+#             },
+#         )
+#         ss["_openai_client"] = cli
+#     return cli
 
 
 def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
