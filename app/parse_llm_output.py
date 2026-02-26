@@ -4,10 +4,10 @@ from typing import Any, Dict
 def parse_json_strict(s:str)->Dict[str,Any]:
     try:
         return json.loads(s)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Model returned invalid JSON: {e}")
-    except TypeError as e:
-        raise ValueError(f"Model returned invalid JSON: {e}")
+    except Exception as e:
+        # Keep all json.loads failures on the ValueError -> ResponseParseError path
+        # so UI RuntimeError handlers can always surface debug details.
+        raise ValueError(f"Model returned invalid JSON: {e}") from e
 
 def validate_alignment_payload(obj:Dict[str,Any])->Dict[str,Any]:
     if obj.get("label") not in {"consistent","ambiguous","inconsistent"}:
