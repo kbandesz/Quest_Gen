@@ -5,6 +5,89 @@ from typing import Dict, Any
 
 ss = st.session_state
 
+
+def _clear_outline_widget_cache():
+    """Clear cached outline widgets after structural edits."""
+    keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
+    for key in keys_to_remove:
+        del ss[key]
+
+
+def _new_module() -> Dict[str, Any]:
+    return {
+        "moduleTitle": "",
+        "overview": "",
+        "sections": [],
+    }
+
+
+def _new_section() -> Dict[str, Any]:
+    return {
+        "sectionTitle": "",
+        "sectionLevelObjectives": [],
+        "units": [],
+    }
+
+
+def _new_unit() -> Dict[str, Any]:
+    return {
+        "unitTitle": "",
+        "unitLevelObjective": "",
+        "keyPoints": [],
+    }
+
+
+def _delete_module(module_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        modules.pop(module_index)
+        _clear_outline_widget_cache()
+
+
+def _add_module():
+    outline = ss.setdefault("outline", {})
+    modules = outline.setdefault("modules", [])
+    modules.append(_new_module())
+    _clear_outline_widget_cache()
+
+
+def _add_section(module_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        sections.append(_new_section())
+        _clear_outline_widget_cache()
+
+
+def _delete_section(module_index: int, section_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        if 0 <= section_index < len(sections):
+            sections.pop(section_index)
+            _clear_outline_widget_cache()
+
+
+def _add_unit(module_index: int, section_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        if 0 <= section_index < len(sections):
+            units = sections[section_index].setdefault("units", [])
+            units.append(_new_unit())
+            _clear_outline_widget_cache()
+
+
+def _delete_unit(module_index: int, section_index: int, unit_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        if 0 <= section_index < len(sections):
+            units = sections[section_index].setdefault("units", [])
+            if 0 <= unit_index < len(units):
+                units.pop(unit_index)
+                _clear_outline_widget_cache()
+
 # Helper functions for editable outline rendering
 def _get_outline_node(path_parts):
     """Return the container and final key/index for a dotted outline path."""
@@ -102,9 +185,24 @@ def display_editable_outline(outline: Dict[str, Any]):
 
     st.divider()
 
+    module_action_cols = st.columns([1, 3], vertical_alignment="center")
+    with module_action_cols[0]:
+        if st.button("➕ Add module", use_container_width=True):
+            _add_module()
+            st.rerun()
+    with module_action_cols[1]:
+        st.caption("Add, remove, and edit modules, sections, and units directly below.")
+
     for module_index, module in enumerate(outline["modules"]):
         module.setdefault("sections", [])
-        st.subheader(f"Module {module_index + 1}")
+        module_header_cols = st.columns([6, 1], vertical_alignment="center")
+        with module_header_cols[0]:
+            st.subheader(f"Module {module_index + 1}")
+        with module_header_cols[1]:
+            if st.button("🗑️", key=f"delete_module_{module_index}", help="Delete module"):
+                _delete_module(module_index)
+                st.rerun()
+
         outline_text_field(
             "Module title",
             f"modules.{module_index}.moduleTitle",
@@ -117,11 +215,26 @@ def display_editable_outline(outline: Dict[str, Any]):
             area=True,
         )
 
+        if st.button("➕ Add section", key=f"add_section_{module_index}"):
+            _add_section(module_index)
+            st.rerun()
+
         for section_index, section in enumerate(module["sections"]):
             section.setdefault("sectionLevelObjectives", [])
             section.setdefault("units", [])
 
-            st.markdown(f"#### Section {section_index + 1}")
+            section_header_cols = st.columns([6, 1], vertical_alignment="center")
+            with section_header_cols[0]:
+                st.markdown(f"#### Section {section_index + 1}")
+            with section_header_cols[1]:
+                if st.button(
+                    "🗑️",
+                    key=f"delete_section_{module_index}_{section_index}",
+                    help="Delete section",
+                ):
+                    _delete_section(module_index, section_index)
+                    st.rerun()
+
             outline_text_field(
                 "Section title",
                 f"modules.{module_index}.sections.{section_index}.sectionTitle",
@@ -135,8 +248,12 @@ def display_editable_outline(outline: Dict[str, Any]):
                 area=True,
             )
 
+            if st.button("➕ Add unit", key=f"add_unit_{module_index}_{section_index}"):
+                _add_unit(module_index, section_index)
+                st.rerun()
+
             for unit_index, unit in enumerate(section["units"]):
-                unit.setdefault("unitLevelObjective", {})
+                unit.setdefault("unitLevelObjective", "")
                 unit.setdefault("keyPoints", [])
 
                 with st.expander(
@@ -161,6 +278,13 @@ def display_editable_outline(outline: Dict[str, Any]):
                         "\n".join(unit.get("keyPoints", [])),
                         area=True,
                     )
+
+                    if st.button(
+                        "🗑️ Delete unit",
+                        key=f"delete_unit_{module_index}_{section_index}_{unit_index}",
+                    ):
+                        _delete_unit(module_index, section_index, unit_index)
+                        st.rerun()
 
 def display_static_outline(outline: Dict[str, Any]):
         """
