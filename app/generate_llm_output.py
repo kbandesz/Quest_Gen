@@ -1,6 +1,6 @@
 # Generate AI responses (including mocks)
 import os
-#import msal
+import msal
 import json
 import streamlit as st
 from openai import OpenAI
@@ -28,22 +28,22 @@ def _get_model() -> str:
 
 
 ####### MSAL authentication (interactive) ########
-# def _acquire_access_token_interactive() -> str:
-#     """Acquire an access token interactively using MSAL."""
+def _acquire_access_token_interactive() -> str:
+    """Acquire an access token interactively using MSAL."""
 
-#     # Read config from environment variables
-#     CLIENT_ID = os.getenv("CLIENT_ID")
-#     TENANT_ID = os.getenv("TENANT_ID")
-#     AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-#     SCOPE = [".default"]
+    # Read config from environment variables
+    CLIENT_ID = os.getenv("CLIENT_ID")
+    TENANT_ID = os.getenv("TENANT_ID")
+    AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+    SCOPE = [".default"]
 
-#     app = msal.PublicClientApplication(client_id=CLIENT_ID, authority=AUTHORITY)
-#     result = app.acquire_token_interactive(scopes=SCOPE)
-#     if not result or "access_token" not in result:
-#         print("Failed to acquire access token:")
-#         print(json.dumps(result, indent=2))
-#         raise RuntimeError("Authentication failed")
-#     return result["access_token"]
+    app = msal.PublicClientApplication(client_id=CLIENT_ID, authority=AUTHORITY)
+    result = app.acquire_token_interactive(scopes=SCOPE)
+    if not result or "access_token" not in result:
+        print("Failed to acquire access token:")
+        print(json.dumps(result, indent=2))
+        raise RuntimeError("Authentication failed")
+    return result["access_token"]
 
  
 def _get_client() -> OpenAI:
