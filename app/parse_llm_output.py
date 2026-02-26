@@ -4,7 +4,9 @@ from typing import Any, Dict
 def parse_json_strict(s:str)->Dict[str,Any]:
     try:
         return json.loads(s)
-    except Exception as e:
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Model returned invalid JSON: {e}")
+    except TypeError as e:
         raise ValueError(f"Model returned invalid JSON: {e}")
 
 def validate_alignment_payload(obj:Dict[str,Any])->Dict[str,Any]:

@@ -17,6 +17,14 @@ ss = st.session_state
 DEFAULT_MODEL = "gpt-5-nano"
 TOKEN_BUFFER = 25_000
 
+
+class ApiRequestError(RuntimeError):
+    """Raised when the request to the model API fails."""
+
+
+class ResponseParseError(RuntimeError):
+    """Raised when the API response cannot be parsed/validated as expected JSON."""
+
 def _is_mock_mode() -> bool:
     """Check if mock mode is enabled from session state."""
     return bool(ss.get("MOCK_MODE", True))
@@ -208,22 +216,29 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
             text={"format": {"type": "json_object"}},
             max_output_tokens=requested_max_tokens,
         )
-        try:
-            return parse_json_strict(_extract_response_text(resp))
-        except Exception as parse_or_text_error:
-            response_debug = _collect_response_debug(resp)
-            raise RuntimeError(
-                "API call succeeded but response parsing failed. "
-                f"model={model} debug={_format_debug(response_debug)}"
-            ) from parse_or_text_error
-    except RuntimeError:
-        # Preserve structured RuntimeError messages from parsing failures.
-        raise
     except Exception as e:
         exception_debug = _collect_exception_debug(e)
-        raise RuntimeError(
+        raise ApiRequestError(
             f"API call failed. model={model} debug={_format_debug(exception_debug)}"
         ) from e
+
+    response_debug = _collect_response_debug(resp)
+    try:
+        response_text = _extract_response_text(resp)
+    except Exception as text_error:
+        raise ResponseParseError(
+            "API call succeeded but no response text was returned. "
+            f"model={model} debug={_format_debug(response_debug)}"
+        ) from text_error
+
+    try:
+        return parse_json_strict(response_text)
+    except ValueError as json_error:
+        response_debug["response_text"] = response_text
+        raise ResponseParseError(
+            "API call succeeded but response JSON parsing failed. "
+            f"model={model} debug={_format_debug(response_debug)}"
+        ) from json_error
 
    
 def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
@@ -240,7 +255,13 @@ def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,
         return const.generate_mock_alignment_result(lo_text, intended_level)
     user_prompt=prompts.build_align_user_prompt(lo_text, intended_level, module_text)
     obj=_chat_json(prompts.ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=2000, temperature=0.2)
-    return validate_alignment_payload(obj)
+    try:
+        return validate_alignment_payload(obj)
+    except ValueError as validation_error:
+        raise ResponseParseError(
+            "API call succeeded but alignment payload validation failed. "
+            f"debug={_format_debug({'payload': obj})}"
+        ) from validation_error
 
 
 def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
@@ -248,4 +269,10 @@ def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_qu
         return const.generate_mock_questions(n_questions)
     user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
     obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=4000, temperature=0.4)
-    return validate_questions_payload(obj)
+    try:
+        return validate_questions_payload(obj)
+    except ValueError as validation_error:
+        raise ResponseParseError(
+            "API call succeeded but questions payload validation failed. "
+            f"debug={_format_debug({'payload': obj})}"
+        ) from validation_error
