@@ -15,6 +15,7 @@ from . import constants as const
 ss = st.session_state
 
 DEFAULT_MODEL = "gpt-5-nano"
+TOKEN_BUFFER = 25_000
 
 def _is_mock_mode() -> bool:
     """Check if mock mode is enabled from session state."""
@@ -189,6 +190,7 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
         return {"mock":"on"}
     client = _get_client()
     model = _get_model()
+    requested_max_tokens = max_tokens + TOKEN_BUFFER
     try:
         resp = client.responses.create( # type: ignore
             model=model,
@@ -204,7 +206,7 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
             ],
             #temperature=temperature,
             text={"format": {"type": "json_object"}},
-            max_output_tokens=max_tokens,
+            max_output_tokens=requested_max_tokens,
         )
         try:
             return parse_json_strict(_extract_response_text(resp))
