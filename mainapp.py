@@ -68,7 +68,7 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-5-nano", "gpt-5-mini", "gpt-5", "gpt-5.2"]
+    model_options = ["gpt-5-mini", "gpt-5", "gpt-5.2"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
@@ -172,7 +172,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         ss["course_tokens"] = tokens
 
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
     
     if ss["course_files"]:
         with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
@@ -203,6 +203,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
+        ss["editable_outline"] = False #reset to static view on new generation
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             try:
                 clear_outline_widget_state(ss)
