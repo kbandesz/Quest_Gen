@@ -68,7 +68,7 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-5-nano", "gpt-5-mini", "gpt-5", "gpt-5.2"]
+    model_options = ["gpt-5-mini", "gpt-5", "gpt-5.2"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
@@ -172,7 +172,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         ss["course_tokens"] = tokens
 
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
     
     if ss["course_files"]:
         with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):

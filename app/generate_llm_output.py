@@ -14,7 +14,7 @@ from . import constants as const
 # Alias for convenience
 ss = st.session_state
 
-DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_MODEL = "gpt-5-mini"
 TOKEN_BUFFER = 25_000
 
 
