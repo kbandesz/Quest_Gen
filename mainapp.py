@@ -44,6 +44,13 @@ apply_pending_restore()
 ss = st.session_state
 init_session_state(ss)
 
+
+def show_api_error(error: Exception) -> None:
+    """Render API failures with full debug details in an expandable area."""
+    st.error("API call failed. See debug details for the full return message.")
+    with st.expander("Debug details", expanded=False):
+        st.code(str(error), language="text")
+
 ################################################
 # Title and warning based on current mock setting
 mock_warning = "   :red[⚠️ MOCK MODE is ON]"
@@ -61,7 +68,7 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"]
+    model_options = ["gpt-5-mini", "gpt-5", "gpt-5.2"]
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
@@ -165,7 +172,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         ss["course_tokens"] = tokens
 
         if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
     
     if ss["course_files"]:
         with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
@@ -196,9 +203,14 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
+        ss["editable_outline"] = False #reset to static view on new generation
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
-            clear_outline_widget_state(ss)
-            ss['outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
+            try:
+                clear_outline_widget_state(ss)
+                ss['outline'] = generate_outline(ss["outline_guidance"].strip(), ss["course_text"])
+            except RuntimeError as err:
+                show_api_error(err)
+                return
             # ss["outline_sig"] = sig_outline(ss.get("outline"))
             # ss["outline_docx_file"] = b""
             # ss["outline_doc_sig"] = None
@@ -434,7 +446,11 @@ def render_step_3():
                              help="Have another pair of AI eyes check your LO."
                              ):
                     with st.spinner("Checking alignment..."):
-                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                        try:
+                            lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                        except RuntimeError as err:
+                            show_api_error(err)
+                            return
                         lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                         st.rerun()
             with btn_cols[1]:
@@ -574,7 +590,11 @@ def render_step_3():
         if st.button("Check All", type="primary", disabled=not ss["los"]):
             with st.spinner("Checking all learning objectives..."):
                 for lo in ss["los"]:
-                    lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                    try:
+                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                    except RuntimeError as err:
+                        show_api_error(err)
+                        return
                     lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
@@ -639,12 +659,16 @@ def render_step_4():
                 nq = ss.get(nq_key, 0)
                 if nq==0:
                     continue
-                payload = generate_questions(
-                    lo.get("final_text"),
-                    lo["intended_level"],
-                    ss["module_text"],
-                    n_questions=nq,
-                )
+                try:
+                    payload = generate_questions(
+                        lo.get("final_text"),
+                        lo["intended_level"],
+                        ss["module_text"],
+                        n_questions=nq,
+                    )
+                except RuntimeError as err:
+                    show_api_error(err)
+                    return
                 existing_questions = ss["questions"].setdefault(lo["id"], [])
                 existing_questions.extend(payload["questions"])
                 # store signature for question generation

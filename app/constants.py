@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 # App-wide limits
-MODULE_TOKEN_LIMIT = 27_000
+MODULE_TOKEN_LIMIT = 150_000
 
 # Module structure guidance
 COURSE_STRUCTURE_GUIDANCE = """
