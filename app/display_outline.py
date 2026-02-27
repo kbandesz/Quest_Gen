@@ -41,6 +41,8 @@ def _delete_module(module_index: int):
     modules = ss.get("outline", {}).get("modules", [])
     if 0 <= module_index < len(modules):
         modules.pop(module_index)
+        if not modules:
+            modules.append(_new_module())
         _clear_outline_widget_cache()
 
 
@@ -71,6 +73,8 @@ def _delete_section(module_index: int, section_index: int):
         sections = modules[module_index].setdefault("sections", [])
         if 0 <= section_index < len(sections):
             sections.pop(section_index)
+            if not sections:
+                sections.append(_new_section())
             _clear_outline_widget_cache()
 
 
@@ -95,6 +99,8 @@ def _delete_unit(module_index: int, section_index: int, unit_index: int):
             units = sections[section_index].setdefault("units", [])
             if 0 <= unit_index < len(units):
                 units.pop(unit_index)
+                if not units:
+                    units.append(_new_unit())
                 _clear_outline_widget_cache()
 
 # Helper functions for editable outline rendering
@@ -196,6 +202,10 @@ def display_editable_outline(outline: Dict[str, Any]):
 
     st.caption("Add, remove, and edit modules, sections, and units directly below.")
 
+    if st.button("➕ Add module", use_container_width=True):
+        _add_module()
+        st.rerun()
+
     for module_index, module in enumerate(outline["modules"]):
         module.setdefault("sections", [])
         module_header_cols = st.columns([6, 1, 1, 1], vertical_alignment="center")
@@ -233,6 +243,11 @@ def display_editable_outline(outline: Dict[str, Any]):
             module.get("overview", ""),
             area=True,
         )
+
+        if not module["sections"]:
+            if st.button("➕ Add section", key=f"add_section_empty_{module_index}"):
+                _add_section(module_index)
+                st.rerun()
 
         for section_index, section in enumerate(module["sections"]):
             section.setdefault("sectionLevelObjectives", [])
