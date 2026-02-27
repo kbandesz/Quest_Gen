@@ -15,25 +15,25 @@ def _clear_outline_widget_cache():
 
 def _new_module() -> Dict[str, Any]:
     return {
-        "moduleTitle": "",
-        "overview": "",
+        "moduleTitle": "PLACEHOLDER: Module title",
+        "overview": "PLACEHOLDER: Module overview",
         "sections": [_new_section()],
     }
 
 
 def _new_section() -> Dict[str, Any]:
     return {
-        "sectionTitle": "",
-        "sectionLevelObjectives": [],
+        "sectionTitle": "PLACEHOLDER: Section title",
+        "sectionLevelObjectives": ["PLACEHOLDER: Section-level objective"],
         "units": [_new_unit()],
     }
 
 
 def _new_unit() -> Dict[str, Any]:
     return {
-        "unitTitle": "",
-        "unitLevelObjective": "",
-        "keyPoints": [],
+        "unitTitle": "PLACEHOLDER: Unit title",
+        "unitLevelObjective": "PLACEHOLDER: Unit-level objective",
+        "keyPoints": ["PLACEHOLDER: Key point 1", "PLACEHOLDER: Key point 2"],
     }
 
 
@@ -188,7 +188,7 @@ def display_editable_outline(outline: Dict[str, Any]):
     outline.setdefault("courseLevelObjectives", [])
     outline.setdefault("modules", [])
 
-    st.header("Course Title")
+    st.header(":blue[Course Title]", divider="blue")
     outline_text_field("Title", "courseTitle", outline.get("courseTitle", ""), label_visibility="collapsed")
 
     st.markdown("**Course-Level Objectives (one per line)**")
@@ -200,17 +200,16 @@ def display_editable_outline(outline: Dict[str, Any]):
 
     st.divider()
 
-    st.caption("Add, remove, and edit modules, sections, and units directly below.")
 
-    if st.button("➕ Add module", use_container_width=True):
-        _add_module()
-        st.rerun()
+    # if st.button("➕ Add module", use_container_width=True):
+    #     _add_module()
+    #     st.rerun()
 
     for module_index, module in enumerate(outline["modules"]):
         module.setdefault("sections", [])
         module_header_cols = st.columns([6, 1, 1, 1], vertical_alignment="center")
         with module_header_cols[0]:
-            st.subheader(f"Module {module_index + 1}")
+            st.subheader(f":green[Module {module_index + 1}]", divider="green")
         with module_header_cols[1]:
             if st.button(
                 "⬆️",
@@ -244,10 +243,10 @@ def display_editable_outline(outline: Dict[str, Any]):
             area=True,
         )
 
-        if not module["sections"]:
-            if st.button("➕ Add section", key=f"add_section_empty_{module_index}"):
-                _add_section(module_index)
-                st.rerun()
+        # if not module["sections"]:
+        #     if st.button("➕ Add section", key=f"add_section_empty_{module_index}"):
+        #         _add_section(module_index)
+        #         st.rerun()
 
         for section_index, section in enumerate(module["sections"]):
             section.setdefault("sectionLevelObjectives", [])
@@ -255,10 +254,10 @@ def display_editable_outline(outline: Dict[str, Any]):
 
             section_header_cols = st.columns([6, 1, 1, 1], vertical_alignment="center")
             with section_header_cols[0]:
-                st.markdown(f"#### Section {section_index + 1}")
+                st.markdown(f"#### :orange[Section {section_index + 1}]")
             with section_header_cols[1]:
                 if st.button(
-                    "⬆️",
+                    "➕⬆️",
                     key=f"add_section_above_{module_index}_{section_index}",
                     help="Add section above",
                 ):
@@ -266,7 +265,7 @@ def display_editable_outline(outline: Dict[str, Any]):
                     st.rerun()
             with section_header_cols[2]:
                 if st.button(
-                    "⬇️",
+                    "➕⬇️",
                     key=f"add_section_below_{module_index}_{section_index}",
                     help="Add section below",
                 ):
@@ -294,9 +293,9 @@ def display_editable_outline(outline: Dict[str, Any]):
                 area=True,
             )
 
-            if st.button("➕ Add unit", key=f"add_unit_{module_index}_{section_index}"):
-                _add_unit(module_index, section_index)
-                st.rerun()
+            # if st.button("➕ Add unit", key=f"add_unit_{module_index}_{section_index}"):
+            #     _add_unit(module_index, section_index)
+            #     st.rerun()
 
             for unit_index, unit in enumerate(section["units"]):
                 unit.setdefault("unitLevelObjective", "")
@@ -356,7 +355,7 @@ def display_static_outline(outline: Dict[str, Any]):
         Parses the JSON outline and displays it in a user-friendly format.
         LLM output was already converted to Python dict in generate_outline().
         """
-        st.header(f"Title: {outline.get('courseTitle', 'N/A')}")
+        st.header(f":blue[Title: {outline.get('courseTitle', 'N/A')}]", divider="blue")
 
         st.markdown("**Course-Level Objectives**")
         for obj in outline.get("courseLevelObjectives", []):
@@ -365,11 +364,11 @@ def display_static_outline(outline: Dict[str, Any]):
         st.markdown("---")
 
         for i, module in enumerate(outline.get("modules", [])):
-            st.subheader(f"Module {i+1}: {module.get('moduleTitle', 'N/A')}")        
+            st.subheader(f":green[Module {i+1}: {module.get('moduleTitle', 'N/A')}]", divider="green")        
             st.markdown(f"**Overview:** {module.get('overview', 'N/A')}")
             
             for j, section in enumerate(module.get("sections", [])):
-                st.markdown(f"#### Section {j+1}: {section.get('sectionTitle', 'N/A')}")
+                st.markdown(f"#### :orange[Section {j+1}: {section.get('sectionTitle', 'N/A')}]")
                 
                 st.markdown("**Section Objectives:**")
                 for s_obj in section.get("sectionLevelObjectives", []):

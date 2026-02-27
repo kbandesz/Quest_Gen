@@ -203,6 +203,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
     is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
     if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
+        ss["editable_outline"] = False #reset to static view on new generation
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             try:
                 clear_outline_widget_state(ss)
