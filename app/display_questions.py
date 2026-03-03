@@ -34,6 +34,8 @@ def _ensure_question_widget_id(q: Dict[str, Any]) -> str:
 def _question_widget_keys(lo_id: str, widget_id: str) -> Iterable[str]:
     """Yield all Streamlit widget state keys used by one question widget group."""
     key_prefix = f"{lo_id}_{widget_id}"
+    yield f"move_q_up_{key_prefix}"
+    yield f"move_q_down_{key_prefix}"
     yield f"delete_q_{key_prefix}"
     yield f"stem_{key_prefix}"
     yield f"correct_option_{key_prefix}"
@@ -58,7 +60,7 @@ def clear_deleted_question_widget_state(lo_id: str, q: Dict[str, Any]) -> None:
         st.session_state.pop(key, None)
 
 
-def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
+def display_editable_question(lo_id: str, idx: int, total_questions: int, q: Dict[str, Any]) -> str | None:
     """
     Render a question with editable fields for stem, options, and metadata.
     Args:
@@ -69,10 +71,8 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
     widget_id = _ensure_question_widget_id(q)
     key_prefix = f"{lo_id}_{widget_id}"
 
-    stem_cols = st.columns([1, 30], vertical_alignment="center")
+    stem_cols = st.columns([10, 1], vertical_alignment="center")
     with stem_cols[0]:
-        delete_clicked = st.button("", icon="❌",key=f"delete_q_{key_prefix}", help="Delete this question")
-    with stem_cols[1]:
         q["stem"] = st.text_area(
             "Question",
             q.get("stem", ""),
@@ -80,6 +80,32 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
             label_visibility="collapsed",
             key=f"stem_{key_prefix}",
         )
+    with stem_cols[1]:
+        with st.popover("⋮", use_container_width=True, type="tertiary"):
+            question_popover_cols = st.columns([1, 1, 1])
+            with question_popover_cols[0]:
+                move_up_clicked = st.button(
+                    "⬆️",
+                    key=f"move_q_up_{key_prefix}",
+                    use_container_width=True,
+                    disabled=idx == 0,
+                    help="Move question up",
+                )
+            with question_popover_cols[1]:
+                move_down_clicked = st.button(
+                    "⬇️",
+                    key=f"move_q_down_{key_prefix}",
+                    use_container_width=True,
+                    disabled=idx == total_questions - 1,
+                    help="Move question down",
+                )
+            with question_popover_cols[2]:
+                delete_clicked = st.button(
+                    "🗑️",
+                    key=f"delete_q_{key_prefix}",
+                    use_container_width=True,
+                    help="Delete this question",
+                )
     # Answer options
     for opt in q.get("options", []):
         cols = st.columns([1, 30], vertical_alignment="center")
@@ -126,7 +152,13 @@ def display_editable_question(lo_id: str, idx: int, q: Dict[str, Any]) -> bool:
         height=70,
         key=f"cognitive_rationale_{key_prefix}",
     )
-    return delete_clicked
+    if move_up_clicked:
+        return "move_up"
+    if move_down_clicked:
+        return "move_down"
+    if delete_clicked:
+        return "delete"
+    return None
 
 
 def display_static_question(q: Dict[str, Any]) -> None:

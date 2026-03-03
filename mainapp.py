@@ -712,14 +712,20 @@ def render_step_4():
             st.subheader(lo.get("final_text"))
             # Go over all questions for this LO
             pending_delete_idx = None
+            pending_move = None
             for idx, q in enumerate(qs):
                 stem_preview = q.get("stem") or "(no question stem)"
                 if ss["editable_questions"]:
                     st.markdown(f"**{idx + 1}. {stem_preview}**")
                     with st.expander("Edit question", expanded=False):
                     # Display editable question
-                        if display_editable_question(lo["id"], idx, q):
+                        question_action = display_editable_question(lo["id"], idx, len(qs), q)
+                        if question_action == "delete":
                             pending_delete_idx = idx
+                        elif question_action == "move_up":
+                            pending_move = (idx, idx - 1)
+                        elif question_action == "move_down":
+                            pending_move = (idx, idx + 1)
                 else:
                     with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
                         display_static_question(q)
@@ -728,6 +734,12 @@ def render_step_4():
                 if pending_delete_idx is not None:
                     deleted_question = qs.pop(pending_delete_idx)
                     clear_deleted_question_widget_state(lo["id"], deleted_question)
+                    st.rerun()
+
+                if pending_move is not None:
+                    source_idx, target_idx = pending_move
+                    if 0 <= source_idx < len(qs) and 0 <= target_idx < len(qs):
+                        qs[source_idx], qs[target_idx] = qs[target_idx], qs[source_idx]
                     st.rerun()
 
                 if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):
