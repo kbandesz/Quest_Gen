@@ -6,11 +6,19 @@ from typing import Dict, Any
 ss = st.session_state
 
 
+def _clear_unit_dialog_widget_cache():
+    """Clear cached unit dialog widgets keyed by module/section/unit indexes."""
+    keys_to_remove = [key for key in ss.keys() if str(key).startswith("unit_dialog_")]
+    for key in keys_to_remove:
+        del ss[key]
+
+
 def _clear_outline_widget_cache():
-    """Clear cached outline widgets after structural edits."""
+    """Clear cached outline and unit-dialog widgets after structural edits."""
     keys_to_remove = [key for key in ss.keys() if str(key).startswith("outline__")]
     for key in keys_to_remove:
         del ss[key]
+    _clear_unit_dialog_widget_cache()
 
 
 def _new_module() -> Dict[str, Any]:
@@ -170,6 +178,7 @@ def _edit_unit_dialog(module_index: int, section_index: int, unit_index: int):
     action_cols = st.columns([1, 1])
     with action_cols[0]:
         if st.button("Cancel", use_container_width=True):
+            _clear_unit_dialog_widget_cache()
             st.rerun()
     with action_cols[1]:
         if st.button("Save changes", type="primary", use_container_width=True):
@@ -342,6 +351,7 @@ def display_editable_outline(outline: Dict[str, Any]):
                             st.markdown(f"📄 Unit {module_index + 1}.{section_index + 1}.{unit_index + 1}: {unit_name}")
                         with unit_cols[1]:
                             if st.button("✏️ Edit", key=f"edit_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True):
+                                _clear_unit_dialog_widget_cache()
                                 _edit_unit_dialog(module_index, section_index, unit_index)
                         with unit_cols[2]:
                             with st.popover("⋮", use_container_width=True):
