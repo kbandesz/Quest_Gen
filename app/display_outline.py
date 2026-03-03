@@ -46,6 +46,13 @@ def _delete_module(module_index: int):
         _clear_outline_widget_cache()
 
 
+def _move_module(module_index: int, target_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules) and 0 <= target_index < len(modules):
+        modules[module_index], modules[target_index] = modules[target_index], modules[module_index]
+        _clear_outline_widget_cache()
+
+
 def _add_module(insert_at: int | None = None):
     outline = ss.setdefault("outline", {})
     modules = outline.setdefault("modules", [])
@@ -78,6 +85,15 @@ def _delete_section(module_index: int, section_index: int):
             _clear_outline_widget_cache()
 
 
+def _move_section(module_index: int, section_index: int, target_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        if 0 <= section_index < len(sections) and 0 <= target_index < len(sections):
+            sections[section_index], sections[target_index] = sections[target_index], sections[section_index]
+            _clear_outline_widget_cache()
+
+
 def _add_unit(module_index: int, section_index: int, insert_at: int | None = None):
     modules = ss.get("outline", {}).get("modules", [])
     if 0 <= module_index < len(modules):
@@ -102,6 +118,66 @@ def _delete_unit(module_index: int, section_index: int, unit_index: int):
                 if not units:
                     units.append(_new_unit())
                 _clear_outline_widget_cache()
+
+
+def _move_unit(module_index: int, section_index: int, unit_index: int, target_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if 0 <= module_index < len(modules):
+        sections = modules[module_index].setdefault("sections", [])
+        if 0 <= section_index < len(sections):
+            units = sections[section_index].setdefault("units", [])
+            if 0 <= unit_index < len(units) and 0 <= target_index < len(units):
+                units[unit_index], units[target_index] = units[target_index], units[unit_index]
+                _clear_outline_widget_cache()
+
+
+@st.dialog("Edit Unit")
+def _edit_unit_dialog(module_index: int, section_index: int, unit_index: int):
+    modules = ss.get("outline", {}).get("modules", [])
+    if not (0 <= module_index < len(modules)):
+        st.warning("Module no longer exists.")
+        return
+
+    sections = modules[module_index].setdefault("sections", [])
+    if not (0 <= section_index < len(sections)):
+        st.warning("Section no longer exists.")
+        return
+
+    units = sections[section_index].setdefault("units", [])
+    if not (0 <= unit_index < len(units)):
+        st.warning("Unit no longer exists.")
+        return
+
+    unit = units[unit_index]
+    unit.setdefault("unitTitle", "")
+    unit.setdefault("unitLevelObjective", "")
+    unit.setdefault("keyPoints", [])
+
+    st.caption(f"Edit Unit {section_index + 1}.{unit_index + 1}")
+    title = st.text_input("Unit title", value=unit.get("unitTitle", ""), key=f"unit_dialog_title_{module_index}_{section_index}_{unit_index}")
+    objective = st.text_input(
+        "Unit objective",
+        value=unit.get("unitLevelObjective", ""),
+        key=f"unit_dialog_objective_{module_index}_{section_index}_{unit_index}",
+    )
+    key_points_raw = st.text_area(
+        "Key points (one per line)",
+        value="\n".join(unit.get("keyPoints", [])),
+        key=f"unit_dialog_points_{module_index}_{section_index}_{unit_index}",
+        height=180,
+    )
+
+    action_cols = st.columns([1, 1])
+    with action_cols[0]:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+    with action_cols[1]:
+        if st.button("Save changes", type="primary", use_container_width=True):
+            unit["unitTitle"] = title
+            unit["unitLevelObjective"] = objective
+            unit["keyPoints"] = [line.strip() for line in key_points_raw.splitlines() if line.strip()]
+            _clear_outline_widget_cache()
+            st.rerun()
 
 # Helper functions for editable outline rendering
 def _get_outline_node(path_parts):
@@ -188,7 +264,8 @@ def display_editable_outline(outline: Dict[str, Any]):
     outline.setdefault("courseLevelObjectives", [])
     outline.setdefault("modules", [])
 
-    st.header(":blue[Course Title]", divider="blue")
+    course_title = outline.get("courseTitle", "") or "Untitled course"
+    st.header(f":blue[Course Title: {course_title}]", divider="blue")
     outline_text_field("Title", "courseTitle", outline.get("courseTitle", ""), label_visibility="collapsed")
 
     st.markdown("**Course-Level Objectives (one per line)**")
@@ -200,155 +277,97 @@ def display_editable_outline(outline: Dict[str, Any]):
 
     st.divider()
 
+    if not outline["modules"]:
+        _add_module()
 
-    # if st.button("➕ Add module", use_container_width=True):
-    #     _add_module()
-    #     st.rerun()
+    if st.button("➕ Add Module", key="add_module_button", type="primary"):
+        _add_module()
+        st.rerun()
 
-    for module_index, module in enumerate(outline["modules"]):
+    tab_labels = [f"Module {i + 1}" for i in range(len(outline["modules"]))]
+    module_tabs = st.tabs(tab_labels)
+
+    for module_index, module_tab in enumerate(module_tabs):
+        module = outline["modules"][module_index]
         module.setdefault("sections", [])
-        module_header_cols = st.columns([6, 1, 1, 1], vertical_alignment="center")
-        with module_header_cols[0]:
-            st.subheader(f":green[Module {module_index + 1}]", divider="green")
-        with module_header_cols[1]:
-            if st.button(
-                "⬆️",
-                key=f"add_module_above_{module_index}",
-                help="Add module above",
-            ):
-                _add_module(insert_at=module_index)
-                st.rerun()
-        with module_header_cols[2]:
-            if st.button(
-                "⬇️",
-                key=f"add_module_below_{module_index}",
-                help="Add module below",
-            ):
-                _add_module(insert_at=module_index + 1)
-                st.rerun()
-        with module_header_cols[3]:
-            if st.button("🗑️", key=f"delete_module_{module_index}", help="Delete module"):
-                _delete_module(module_index)
-                st.rerun()
 
-        outline_text_field(
-            "Module title",
-            f"modules.{module_index}.moduleTitle",
-            module.get("moduleTitle", ""),
-        )
-        outline_text_field(
-            "Module overview",
-            f"modules.{module_index}.overview",
-            module.get("overview", ""),
-            area=True,
-        )
+        with module_tab:
+            module_title = module.get("moduleTitle", "") or "Untitled module"
+            module_header_cols = st.columns([8, 1], vertical_alignment="center")
+            with module_header_cols[0]:
+                st.subheader(f":green[Module {module_index + 1}: {module_title}]", divider="green")
+            with module_header_cols[1]:
+                with st.popover("⋮ Options", use_container_width=True):
+                    if st.button("Move Left", key=f"move_module_left_{module_index}", use_container_width=True, disabled=module_index == 0):
+                        _move_module(module_index, module_index - 1)
+                        st.rerun()
+                    if st.button("Move Right", key=f"move_module_right_{module_index}", use_container_width=True, disabled=module_index == len(outline["modules"]) - 1):
+                        _move_module(module_index, module_index + 1)
+                        st.rerun()
+                    if st.button("Delete Module", key=f"delete_module_{module_index}", use_container_width=True):
+                        _delete_module(module_index)
+                        st.rerun()
 
-        # if not module["sections"]:
-        #     if st.button("➕ Add section", key=f"add_section_empty_{module_index}"):
-        #         _add_section(module_index)
-        #         st.rerun()
+            outline_text_field("Module title", f"modules.{module_index}.moduleTitle", module.get("moduleTitle", ""))
+            outline_text_field("Module overview", f"modules.{module_index}.overview", module.get("overview", ""), area=True)
 
-        for section_index, section in enumerate(module["sections"]):
-            section.setdefault("sectionLevelObjectives", [])
-            section.setdefault("units", [])
+            for section_index, section in enumerate(module["sections"]):
+                section.setdefault("sectionLevelObjectives", [])
+                section.setdefault("units", [])
 
-            section_header_cols = st.columns([6, 1, 1, 1], vertical_alignment="center")
-            with section_header_cols[0]:
-                st.markdown(f"#### :orange[Section {section_index + 1}]")
-            with section_header_cols[1]:
-                if st.button(
-                    "➕⬆️",
-                    key=f"add_section_above_{module_index}_{section_index}",
-                    help="Add section above",
-                ):
-                    _add_section(module_index, insert_at=section_index)
-                    st.rerun()
-            with section_header_cols[2]:
-                if st.button(
-                    "➕⬇️",
-                    key=f"add_section_below_{module_index}_{section_index}",
-                    help="Add section below",
-                ):
-                    _add_section(module_index, insert_at=section_index + 1)
-                    st.rerun()
-            with section_header_cols[3]:
-                if st.button(
-                    "🗑️",
-                    key=f"delete_section_{module_index}_{section_index}",
-                    help="Delete section",
-                ):
-                    _delete_section(module_index, section_index)
-                    st.rerun()
+                with st.container(border=True):
+                    section_header_cols = st.columns([8, 1], vertical_alignment="center")
+                    with section_header_cols[0]:
+                        st.markdown(f"#### :orange[Section {module_index + 1}.{section_index + 1}: {section.get('sectionTitle', 'Untitled section') or 'Untitled section'}]")
+                    with section_header_cols[1]:
+                        with st.popover("⋮ Options", use_container_width=True):
+                            if st.button("Move Up", key=f"move_section_up_{module_index}_{section_index}", use_container_width=True, disabled=section_index == 0):
+                                _move_section(module_index, section_index, section_index - 1)
+                                st.rerun()
+                            if st.button("Move Down", key=f"move_section_down_{module_index}_{section_index}", use_container_width=True, disabled=section_index == len(module["sections"]) - 1):
+                                _move_section(module_index, section_index, section_index + 1)
+                                st.rerun()
+                            if st.button("Delete Section", key=f"delete_section_{module_index}_{section_index}", use_container_width=True):
+                                _delete_section(module_index, section_index)
+                                st.rerun()
 
-            outline_text_field(
-                "Section title",
-                f"modules.{module_index}.sections.{section_index}.sectionTitle",
-                section.get("sectionTitle", ""),
-            )
-
-            outline_text_field(
-                "Section objectives (one per line)",
-                f"modules.{module_index}.sections.{section_index}.sectionLevelObjectives",
-                "\n".join(section.get("sectionLevelObjectives", [])),
-                area=True,
-            )
-
-            # if st.button("➕ Add unit", key=f"add_unit_{module_index}_{section_index}"):
-            #     _add_unit(module_index, section_index)
-            #     st.rerun()
-
-            for unit_index, unit in enumerate(section["units"]):
-                unit.setdefault("unitLevelObjective", "")
-                unit.setdefault("keyPoints", [])
-
-                with st.expander(
-                    f"Unit {section_index + 1}.{unit_index + 1}: {unit.get('unitTitle', 'Untitled unit') or 'Untitled unit'}",
-                    expanded=False,
-                ):
-                    unit_action_cols = st.columns([8, 1, 1, 1], vertical_alignment="center")
-                    with unit_action_cols[1]:
-                        if st.button(
-                            "⬆️",
-                            key=f"add_unit_above_{module_index}_{section_index}_{unit_index}",
-                            help="Add unit above",
-                        ):
-                            _add_unit(module_index, section_index, insert_at=unit_index)
-                            st.rerun()
-                    with unit_action_cols[2]:
-                        if st.button(
-                            "⬇️",
-                            key=f"add_unit_below_{module_index}_{section_index}_{unit_index}",
-                            help="Add unit below",
-                        ):
-                            _add_unit(module_index, section_index, insert_at=unit_index + 1)
-                            st.rerun()
-                    with unit_action_cols[3]:
-                        if st.button(
-                            "🗑️",
-                            key=f"delete_unit_{module_index}_{section_index}_{unit_index}",
-                            help="Delete unit",
-                        ):
-                            _delete_unit(module_index, section_index, unit_index)
-                            st.rerun()
-
+                    outline_text_field("Section title", f"modules.{module_index}.sections.{section_index}.sectionTitle", section.get("sectionTitle", ""))
                     outline_text_field(
-                        "Unit title",
-                        f"modules.{module_index}.sections.{section_index}.units.{unit_index}.unitTitle",
-                        unit.get("unitTitle", ""),
-                    )
-
-                    outline_text_field(
-                        "Unit objective",
-                        f"modules.{module_index}.sections.{section_index}.units.{unit_index}.unitLevelObjective",
-                        unit.get("unitLevelObjective", "")
-                    )
-
-                    outline_text_field(
-                        "Key points (one per line)",
-                        f"modules.{module_index}.sections.{section_index}.units.{unit_index}.keyPoints",
-                        "\n".join(unit.get("keyPoints", [])),
+                        "Section objectives (one per line)",
+                        f"modules.{module_index}.sections.{section_index}.sectionLevelObjectives",
+                        "\n".join(section.get("sectionLevelObjectives", [])),
                         area=True,
                     )
+
+                    st.markdown("**Units**")
+                    for unit_index, unit in enumerate(section["units"]):
+                        unit_name = unit.get("unitTitle", "") or "Untitled unit"
+                        unit_cols = st.columns([8, 1, 1], vertical_alignment="center")
+                        with unit_cols[0]:
+                            st.markdown(f"📄 Unit {module_index + 1}.{section_index + 1}.{unit_index + 1}: {unit_name}")
+                        with unit_cols[1]:
+                            if st.button("✏️ Edit", key=f"edit_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True):
+                                _edit_unit_dialog(module_index, section_index, unit_index)
+                        with unit_cols[2]:
+                            with st.popover("⋮", use_container_width=True):
+                                if st.button("Move Up", key=f"move_unit_up_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == 0):
+                                    _move_unit(module_index, section_index, unit_index, unit_index - 1)
+                                    st.rerun()
+                                if st.button("Move Down", key=f"move_unit_down_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == len(section["units"]) - 1):
+                                    _move_unit(module_index, section_index, unit_index, unit_index + 1)
+                                    st.rerun()
+                                if st.button("Delete", key=f"delete_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True):
+                                    _delete_unit(module_index, section_index, unit_index)
+                                    st.rerun()
+
+                    if st.button("➕ Add Unit", key=f"add_unit_{module_index}_{section_index}"):
+                        _add_unit(module_index, section_index)
+                        st.rerun()
+
+            if st.button("➕ Add Section", key=f"add_section_{module_index}", use_container_width=True):
+                _add_section(module_index)
+                st.rerun()
+
 
 def display_static_outline(outline: Dict[str, Any]):
         """
