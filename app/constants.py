@@ -277,7 +277,330 @@ def generate_mock_outline()->Dict[str,Any]:
               ]
             }
           ]
-        }
+        },
+        {
+          "moduleTitle": "Stress Testing and Scenario Analysis",
+          "overview": "This module focuses on how analysts assess debt sustainability under uncertainty. Learners will practice building baseline projections, designing macro-fiscal shock scenarios, and interpreting fan charts and risk metrics to communicate vulnerabilities clearly.",
+          "sections": [
+            {
+              "sectionTitle": "Baseline vs. Alternative Scenarios",
+              "sectionLevelObjectives": [
+                "Explain the purpose of a baseline projection in a DSA.",
+                "Construct alternative scenarios by varying key macro-fiscal assumptions."
+              ],
+              "units": [
+                {
+                  "unitTitle": "Building a Baseline Path",
+                  "unitLevelObjective": "Describe the key inputs and assumptions used to generate a baseline debt path.",
+                  "keyPoints": [
+                    "Core inputs: growth, inflation, interest rates, exchange rate, primary balance.",
+                    "Consistency checks between macro assumptions and fiscal projections."
+                  ],
+                },
+                {
+                  "unitTitle": "Designing Alternative Scenarios",
+                  "unitLevelObjective": "Create structured alternative scenarios to test sensitivity of debt dynamics.",
+                  "keyPoints": [
+                    "Adjusting one assumption at a time vs. multi-factor scenarios.",
+                    "Documenting scenario narratives and transmission channels."
+                  ],
+                }
+              ]
+            },
+            {
+              "sectionTitle": "Shock Design and Interpretation",
+              "sectionLevelObjectives": [
+                "Apply common macroeconomic shocks to a debt path and interpret results.",
+                "Identify which shocks are most informative for country-specific vulnerabilities."
+              ],
+              "units": [
+                {
+                  "unitTitle": "Common Stress Tests",
+                  "unitLevelObjective": "List typical shocks used in debt sustainability analysis and what they capture.",
+                  "keyPoints": [
+                    "Growth, interest rate, exchange rate, and primary balance shocks.",
+                    "Contingent liabilities and one-off level shocks."
+                  ],
+                },
+                {
+                  "unitTitle": "Reading Results and Risk Signals",
+                  "unitLevelObjective": "Interpret stress-test outputs to diagnose the main sources of risk.",
+                  "keyPoints": [
+                    "Comparing debt trajectories across shocks to identify dominant risk drivers.",
+                    "Using results to motivate policy trade-offs and risk mitigation."
+                  ],
+                }
+              ]
+            },
+            {
+              "sectionTitle": "Module 2 Summary",
+              "sectionLevelObjectives": [
+                "Summarize how scenario analysis strengthens conclusions from a baseline DSA."
+              ],
+              "units": [
+                {
+                  "unitTitle": "Key Takeaways",
+                  "unitLevelObjective": "Recall the main lessons from stress testing and scenario analysis.",
+                  "keyPoints": [
+                    "Baseline paths are conditional on assumptions; scenarios quantify vulnerability.",
+                    "Clear scenario narratives improve credibility and communication."
+                  ],
+                }
+              ]
+            }
+          ]
+        }        
       ]
     }
     return mock_json
+
+#     mock_json = {
+#   "courseTitle": "Public Debt Sustainability",
+#   "courseLevelObjectives": [
+#     "Analyze the key drivers of public debt vulnerabilities using a structured framework.",
+#     "Evaluate the effectiveness of fiscal adjustment strategies in stabilizing debt dynamics.",
+#     "Develop a comprehensive debt management strategy that considers risk and cost trade-offs.",
+#     "Assess the impact of macroeconomic shocks on debt sustainability."
+#   ],
+#   "modules": [
+#     {
+#       "moduleTitle": "Foundations of Public Debt Sustainability",
+#       "overview": "This module introduces the core concepts of public debt sustainability. Learners will explore the main components of the debt dynamic equation and understand how fiscal policy, economic growth, and interest rates interact to determine a country's debt trajectory.",
+#       "sections": [
+#         {
+#           "sectionTitle": "Introduction to Public Debt",
+#           "sectionLevelObjectives": [
+#             "Explain the fundamental concepts of public debt and the government budget constraint."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "What is Public Debt?",
+#               "unitLevelObjective": "Define public sector debt and list common metrics.",
+#               "keyPoints": [
+#                 "Definition of public sector debt.",
+#                 "Common measures and metrics (e.g., Debt-to-GDP ratio)."
+#               ],
+#             },
+#             {
+#               "unitTitle": "The Government Budget Constraint",
+#               "unitLevelObjective": "Explain how government deficits lead to debt accumulation.",
+#               "keyPoints": [
+#                 "Understanding the flow of government revenue and expenditure.",
+#                 "How deficits lead to debt accumulation."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "The Debt Dynamics Equation",
+#           "sectionLevelObjectives": [
+#             "Apply the debt dynamics equation to identify key variables and calculate the debt-stabilizing primary balance.",
+#             "If you see this, email Andras and you will get a coffee."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Deconstructing the Equation",
+#               "unitLevelObjective": "Identify the key variables in the debt dynamics equation.",
+#               "keyPoints": [
+#                 "Identifying key variables: primary balance, interest rate, growth rate."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Debt-Stabilizing Primary Balance",
+#               "unitLevelObjective": "Calculate the primary balance required to stabilize the debt ratio.",
+#               "keyPoints": [
+#                 "Calculating the primary balance needed to keep the debt ratio constant."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Solvency and Sustainability",
+#           "sectionLevelObjectives": [
+#             "Differentiate between the concepts of debt solvency and sustainability."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Defining Solvency",
+#               "unitLevelObjective": "Explain the concept of government debt solvency.",
+#               "keyPoints": [
+#                 "The government's long-run ability to service its debt."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Defining Sustainability",
+#               "unitLevelObjective": "Distinguish sustainability from solvency.",
+#               "keyPoints": [
+#                 "Maintaining a stable, non-explosive debt path without major policy shifts.",
+#                 "[NOTE: This topic was not found in the source material but is included for pedagogical completeness.]"
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Module 1 Summary",
+#           "sectionLevelObjectives": [
+#             "Summarize the key principles of public debt sustainability analysis presented in the module."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Key Takeaways",
+#               "unitLevelObjective": "Recall the most important concepts of the module.",
+#               "keyPoints": [
+#                 "Recap of the debt dynamics equation.",
+#                 "Importance of the interest rate-growth differential."
+#               ],
+#             }
+#           ]
+#         },
+#     {
+#       "moduleTitle": "Stress Testing and Scenario Analysis",
+#       "overview": "This module focuses on how analysts assess debt sustainability under uncertainty. Learners will practice building baseline projections, designing macro-fiscal shock scenarios, and interpreting fan charts and risk metrics to communicate vulnerabilities clearly.",
+#       "sections": [
+#         {
+#           "sectionTitle": "Baseline vs. Alternative Scenarios",
+#           "sectionLevelObjectives": [
+#             "Explain the purpose of a baseline projection in a DSA.",
+#             "Construct alternative scenarios by varying key macro-fiscal assumptions."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Building a Baseline Path",
+#               "unitLevelObjective": "Describe the key inputs and assumptions used to generate a baseline debt path.",
+#               "keyPoints": [
+#                 "Core inputs: growth, inflation, interest rates, exchange rate, primary balance.",
+#                 "Consistency checks between macro assumptions and fiscal projections."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Designing Alternative Scenarios",
+#               "unitLevelObjective": "Create structured alternative scenarios to test sensitivity of debt dynamics.",
+#               "keyPoints": [
+#                 "Adjusting one assumption at a time vs. multi-factor scenarios.",
+#                 "Documenting scenario narratives and transmission channels."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Shock Design and Interpretation",
+#           "sectionLevelObjectives": [
+#             "Apply common macroeconomic shocks to a debt path and interpret results.",
+#             "Identify which shocks are most informative for country-specific vulnerabilities."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Common Stress Tests",
+#               "unitLevelObjective": "List typical shocks used in debt sustainability analysis and what they capture.",
+#               "keyPoints": [
+#                 "Growth, interest rate, exchange rate, and primary balance shocks.",
+#                 "Contingent liabilities and one-off level shocks."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Reading Results and Risk Signals",
+#               "unitLevelObjective": "Interpret stress-test outputs to diagnose the main sources of risk.",
+#               "keyPoints": [
+#                 "Comparing debt trajectories across shocks to identify dominant risk drivers.",
+#                 "Using results to motivate policy trade-offs and risk mitigation."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Module 2 Summary",
+#           "sectionLevelObjectives": [
+#             "Summarize how scenario analysis strengthens conclusions from a baseline DSA."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Key Takeaways",
+#               "unitLevelObjective": "Recall the main lessons from stress testing and scenario analysis.",
+#               "keyPoints": [
+#                 "Baseline paths are conditional on assumptions; scenarios quantify vulnerability.",
+#                 "Clear scenario narratives improve credibility and communication."
+#               ],
+#             }
+#           ]
+#         }
+#       ]
+#     }        
+#       ]
+#     },
+
+#     # NEW MODULE ADDED
+#     {
+#       "moduleTitle": "Stress Testing and Scenario Analysis",
+#       "overview": "This module focuses on how analysts assess debt sustainability under uncertainty. Learners will practice building baseline projections, designing macro-fiscal shock scenarios, and interpreting fan charts and risk metrics to communicate vulnerabilities clearly.",
+#       "sections": [
+#         {
+#           "sectionTitle": "Baseline vs. Alternative Scenarios",
+#           "sectionLevelObjectives": [
+#             "Explain the purpose of a baseline projection in a DSA.",
+#             "Construct alternative scenarios by varying key macro-fiscal assumptions."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Building a Baseline Path",
+#               "unitLevelObjective": "Describe the key inputs and assumptions used to generate a baseline debt path.",
+#               "keyPoints": [
+#                 "Core inputs: growth, inflation, interest rates, exchange rate, primary balance.",
+#                 "Consistency checks between macro assumptions and fiscal projections."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Designing Alternative Scenarios",
+#               "unitLevelObjective": "Create structured alternative scenarios to test sensitivity of debt dynamics.",
+#               "keyPoints": [
+#                 "Adjusting one assumption at a time vs. multi-factor scenarios.",
+#                 "Documenting scenario narratives and transmission channels."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Shock Design and Interpretation",
+#           "sectionLevelObjectives": [
+#             "Apply common macroeconomic shocks to a debt path and interpret results.",
+#             "Identify which shocks are most informative for country-specific vulnerabilities."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Common Stress Tests",
+#               "unitLevelObjective": "List typical shocks used in debt sustainability analysis and what they capture.",
+#               "keyPoints": [
+#                 "Growth, interest rate, exchange rate, and primary balance shocks.",
+#                 "Contingent liabilities and one-off level shocks."
+#               ],
+#             },
+#             {
+#               "unitTitle": "Reading Results and Risk Signals",
+#               "unitLevelObjective": "Interpret stress-test outputs to diagnose the main sources of risk.",
+#               "keyPoints": [
+#                 "Comparing debt trajectories across shocks to identify dominant risk drivers.",
+#                 "Using results to motivate policy trade-offs and risk mitigation."
+#               ],
+#             }
+#           ]
+#         },
+#         {
+#           "sectionTitle": "Module 2 Summary",
+#           "sectionLevelObjectives": [
+#             "Summarize how scenario analysis strengthens conclusions from a baseline DSA."
+#           ],
+#           "units": [
+#             {
+#               "unitTitle": "Key Takeaways",
+#               "unitLevelObjective": "Recall the main lessons from stress testing and scenario analysis.",
+#               "keyPoints": [
+#                 "Baseline paths are conditional on assumptions; scenarios quantify vulnerability.",
+#                 "Clear scenario narratives improve credibility and communication."
+#               ],
+#             }
+#           ]
+#         }
+#       ]
+#     }
+#   ]
+# }
+# return mock_json

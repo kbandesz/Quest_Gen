@@ -11,6 +11,7 @@ from app.display_questions import (
     clear_deleted_question_widget_state,
     create_empty_question,
     display_editable_question,
+    display_question_actions,
     display_static_question,
 )
 from app.save_load_progress import save_load_panel, apply_pending_restore
@@ -68,7 +69,15 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-5-mini", "gpt-5", "gpt-5.2"]
+    model_options = ["gpt-4.1", "gpt-5-mini", "gpt-5", "gpt-5.2"]
+
+    current_model = ss.get("OPENAI_MODEL")
+    if current_model not in model_options:
+        legacy_model_map = {
+            "gpt-4.1, gpt-5-mini": "gpt-4.1",
+        }
+        ss["OPENAI_MODEL"] = legacy_model_map.get(current_model, model_options[0])
+
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
@@ -175,12 +184,15 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
     
     if ss["course_files"]:
-        with st.expander(":small[:grey[View uploaded files and extracted text]]", expanded=False):
+        st.caption("Currently uploaded files (To change, use file picker above):")
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
+        st.markdown(current_files)
+        with st.expander(":small[:grey[View extracted text]]", expanded=False):
             # Display currently uploaded files
             #if ss["course_files"]:
-            st.caption("Currently uploaded files (To change, use file picker above):")
-            current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-            st.markdown(current_files)
+            # st.caption("Currently uploaded files (To change, use file picker above):")
+            # current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
+            # st.markdown(current_files)
 
             # Display token count & preview from session (stable across reruns)
             st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
@@ -221,7 +233,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
 
         # Switch between static and editable outline view
         st.write("")
-        st.toggle("Editable outline", key="editable_outline", value=False, help="Switch between editable and static outline view. In editable mode, you can modify module and section titles, add or remove sections, and edit section-level objectives.")
+        st.toggle("Edit mode", key="editable_outline", value=False, help="Switch between editable and static outline view. In editable mode, you can modify module and section titles, add or remove sections, and edit section-level objectives.")
         # Display the formatted outline
         if ss["editable_outline"]:
             display_editable_outline(ss['outline'])
@@ -309,17 +321,21 @@ def render_step_2():
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
-    with st.expander("View uploaded files and extracted text", expanded=False):
-        # Display currently uploaded files from the session state (stable across reruns)
-        if ss["module_files"]:
-            st.caption("Currently uploaded files (To change, use file picker above):")
-            current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
-            st.markdown(current_files)
+    if ss["module_files"]:
+        st.caption("Currently uploaded files (To change, use file picker above):")
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+        st.markdown(current_files)
+        with st.expander("View extracted text", expanded=False):
+            # Display currently uploaded files from the session state (stable across reruns)
+            # if ss["module_files"]:
+            #     st.caption("Currently uploaded files (To change, use file picker above):")
+            #     current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+            #     st.markdown(current_files)
 
-        # Display token count & preview from session (stable across reruns)
-        st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
-        st.caption("Preview first 5,000 characters")
-        st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+            # Display token count & preview from session (stable across reruns)
+            st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     # --- Navigation ---
     st.divider()
@@ -419,15 +435,14 @@ def render_step_3():
                 st.warning(f"⚠️ Avoid vague verbs like {', '.join(const.LO_WRITING_TIPS['avoid_verbs'])}. See tips above.")
 
             # --- Bloom level selector ---
+            st.info("Choose a Bloom level to see the definition and common verbs.")
             bloom_options = list(const.BLOOM_LEVEL_DEFS.keys())
             sel = st.selectbox("Intended Bloom level", options=bloom_options, key=lo_level_key,
                                index=None, placeholder="Select ...",
                                disabled=is_final, help="Select the intended Bloom's taxonomy level.",
                                label_visibility="visible")
             lo["intended_level"] = sel
-            if sel is None:
-                 st.info("Choose a Bloom level to see the definition and common verbs.")
-            else:
+            if lo["intended_level"]:
                 st.markdown(f"ℹ️**{const.BLOOM_LEVEL_DEFS[sel]}** \n\n **Common verbs:** {const.BLOOM_VERBS[sel]}")
             
             # --- Visual cue for finalized ---            
@@ -585,11 +600,23 @@ def render_step_3():
 
     # --- Check All / Accept All buttons ---
     st.write("")
+    los_with_pending_alignment = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and lo.get("alignment") is None
+    ]
+    los_ready_to_accept = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and not lo.get("final_text")
+    ]
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
-        if st.button("Check All", type="primary", disabled=not ss["los"]):
+        if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
             with st.spinner("Checking all learning objectives..."):
-                for lo in ss["los"]:
+                for lo in los_with_pending_alignment:
                     try:
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                     except RuntimeError as err:
@@ -598,8 +625,8 @@ def render_step_3():
                     lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
-        if st.button("Accept All", disabled=not ss["los"]):
-            for lo in ss["los"]:
+        if st.button("Accept All", disabled=not los_ready_to_accept):
+            for lo in los_ready_to_accept:
                 lo["final_text"] = lo["text"]
                 # Invalidate questions if needed
                 current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
@@ -689,7 +716,7 @@ def render_step_4():
     # if has_questions:
     st.write("")
     st.toggle(
-        "Editable questions",
+        "Edit mode",
         key="editable_questions",
         value=False,
         help=(
@@ -706,20 +733,39 @@ def render_step_4():
             st.subheader(lo.get("final_text"))
             # Go over all questions for this LO
             pending_delete_idx = None
+            pending_move = None
             for idx, q in enumerate(qs):
                 stem_preview = q.get("stem") or "(no question stem)"
-                with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
-                    # Display static or editable question details based on toggle
-                    if ss["editable_questions"]:
-                        if display_editable_question(lo["id"], idx, q):
+                if ss["editable_questions"]:
+                    question_header_cols = st.columns([10, 1], vertical_alignment="center")
+                    with question_header_cols[0]:
+                        st.markdown(f"**{idx + 1}. {stem_preview}**")
+                    with question_header_cols[1]:
+                        question_action = display_question_actions(lo["id"], idx, len(qs), q)
+                        if question_action == "delete":
                             pending_delete_idx = idx
-                    else:
+                        elif question_action == "move_up":
+                            pending_move = (idx, idx - 1)
+                        elif question_action == "move_down":
+                            pending_move = (idx, idx + 1)
+
+                    with st.expander("Edit question", expanded=False):
+                    # Display editable question
+                        display_editable_question(lo["id"], q)
+                else:
+                    with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
                         display_static_question(q)
 
             if ss["editable_questions"]:
                 if pending_delete_idx is not None:
                     deleted_question = qs.pop(pending_delete_idx)
                     clear_deleted_question_widget_state(lo["id"], deleted_question)
+                    st.rerun()
+
+                if pending_move is not None:
+                    source_idx, target_idx = pending_move
+                    if 0 <= source_idx < len(qs) and 0 <= target_idx < len(qs):
+                        qs[source_idx], qs[target_idx] = qs[target_idx], qs[source_idx]
                     st.rerun()
 
                 if st.button("+ Add question manually", key=f"add_q_{lo['id']}"):

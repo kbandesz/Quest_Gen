@@ -36,6 +36,118 @@ DOMAIN_STATE_KEYS = {
     # "docx_file",
 }
 
+CURRENT_SAVE_VERSION = 1
+
+_PERSISTED_KEY_NORMALIZERS = {
+    "MOCK_MODE": lambda value: _normalize_bool("MOCK_MODE", value),
+    "OPENAI_MODEL": lambda value: _normalize_str("OPENAI_MODEL", value),
+    "course_files": lambda value: _normalize_list("course_files", value),
+    "course_text": lambda value: _normalize_str("course_text", value),
+    "course_tokens": lambda value: _normalize_int("course_tokens", value),
+    "outline_guidance": lambda value: _normalize_str("outline_guidance", value),
+    "outline": lambda value: _normalize_dict("outline", value),
+    "module_files": lambda value: _normalize_list("module_files", value),
+    "module_text": lambda value: _normalize_str("module_text", value),
+    "module_tokens": lambda value: _normalize_int("module_tokens", value),
+    "module_sig": lambda value: _normalize_str("module_sig", value),
+    "los": lambda value: _normalize_list("los", value),
+    "questions": lambda value: _normalize_dict("questions", value),
+    "include_opts": lambda value: _normalize_dict("include_opts", value),
+}
+
+
+def _normalize_str(key: str, value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"Invalid save file: key '{key}' must be a string")
+
+
+def _normalize_bool(key: str, value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"Invalid save file: key '{key}' must be a boolean")
+
+
+def _normalize_int(key: str, value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid save file: key '{key}' must be an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    raise ValueError(f"Invalid save file: key '{key}' must be an integer")
+
+
+def _normalize_list(key: str, value: Any) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    raise ValueError(f"Invalid save file: key '{key}' must be a list")
+
+
+def _normalize_dict(key: str, value: Any) -> dict:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    raise ValueError(f"Invalid save file: key '{key}' must be an object")
+
+
+def _migrate_saved_payload(version: int, payload: dict) -> dict:
+    """Run schema migrations and return a payload in CURRENT_SAVE_VERSION format."""
+    if version > CURRENT_SAVE_VERSION:
+        raise ValueError(
+            f"Invalid save file: unsupported version {version} (max {CURRENT_SAVE_VERSION})"
+        )
+
+    migrated = dict(payload)
+    while version < CURRENT_SAVE_VERSION:
+        # Placeholder for future migrations, e.g.:
+        # if version == 1:
+        #     migrated = _migrate_v1_to_v2(migrated)
+        #     version = 2
+        raise ValueError(
+            f"Invalid save file: migration path for version {version} not implemented"
+        )
+
+    return migrated
+
+
+def _normalize_saved_payload(saved_state: dict) -> dict:
+    if not isinstance(saved_state, dict):
+        raise ValueError("Invalid save file: payload must be a JSON object")
+
+    version = saved_state.get("version", 1)
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError("Invalid save file: 'version' must be an integer")
+
+    migrated = _migrate_saved_payload(version, saved_state)
+
+    data = migrated.get("state")
+    if not isinstance(data, dict):
+        raise ValueError("Invalid save file: missing 'state' payload")
+
+    normalized = {}
+    for key in DOMAIN_STATE_KEYS:
+        if key not in data:
+            continue
+        normalizer = _PERSISTED_KEY_NORMALIZERS.get(key)
+        if normalizer is None:
+            continue
+        normalized[key] = normalizer(data[key])
+
+    return {
+        "version": CURRENT_SAVE_VERSION,
+        "state": normalized,
+    }
+
 
 def _is_jsonable(x: Any) -> bool:
     PRIMS = (str, int, float, bool, type(None))
@@ -59,13 +171,12 @@ def exportable_state() -> dict:
     return {
         "saved_at": dt.datetime.now().isoformat(timespec="seconds"),
         "state": out,
-        "version": 1,
+        "version": CURRENT_SAVE_VERSION,
     }
 
 def restore_state(saved_state: dict):
-    data = saved_state.get("state", {})
-    if not isinstance(data, dict):
-        raise ValueError("Invalid save file: missing 'state' payload")
+    normalized_payload = _normalize_saved_payload(saved_state)
+    data = normalized_payload["state"]
 
     # Clear session state so we mirror the saved snapshot
     #for key in DOMAIN_STATE_KEYS:
@@ -133,4 +244,3 @@ def save_load_panel():
     #st.divider()
     st.markdown("### 📤 Load session")
     load_progress_ui()
-
