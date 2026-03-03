@@ -39,7 +39,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
     # ss.setdefault("outline_doc_sig", None)
 
     ss.setdefault("MOCK_MODE", True)
-    ss.setdefault("OPENAI_MODEL", "gpt-5-mini")
+    ss.setdefault("OPENAI_MODEL", "gpt-4.1")
 
     ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
 
@@ -217,11 +217,10 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
             # Clear everything and go back to Step 1
             current_mock_mode = ss.get("MOCK_MODE")
             next_uploader_key = ss.get("uploader_key", 0) + 1
-            #ss["uploader_key"] += 1
             ss.clear()
             ss["uploader_key"] = next_uploader_key
-            #if mock_mode_change:
-            ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+            if mock_mode_change:
+                ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
             st.rerun() # Rerun to dismiss the dialog and update the app state
     with col2:
         if st.button("Cancel"):

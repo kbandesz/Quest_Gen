@@ -273,7 +273,7 @@ def display_editable_outline(outline: Dict[str, Any]):
     outline.setdefault("courseLevelObjectives", [])
     outline.setdefault("modules", [])
 
-    st.header(":blue[Course Title]", divider="blue")
+    st.header(f":blue[Title: {outline.get("courseTitle", "")}]", divider="blue")
     outline_text_field("Title", "courseTitle", outline.get("courseTitle", ""), label_visibility="collapsed")
 
     st.markdown("**Course-Level Objectives (one per line)**")
@@ -297,20 +297,24 @@ def display_editable_outline(outline: Dict[str, Any]):
 
         with module_tab:
             module_title = module.get("moduleTitle", "") or "Untitled module"
-            module_header_cols = st.columns([8, 1], vertical_alignment="center")
+            module_header_cols = st.columns([9, 1], vertical_alignment="center")
             with module_header_cols[0]:
                 st.subheader(f":green[Module {module_index + 1}: {module_title}]", divider="green")
             with module_header_cols[1]:
-                with st.popover("⋮ Options", use_container_width=True):
-                    if st.button("Move Left", key=f"move_module_left_{module_index}", use_container_width=True, disabled=module_index == 0):
-                        _move_module(module_index, module_index - 1)
-                        st.rerun()
-                    if st.button("Move Right", key=f"move_module_right_{module_index}", use_container_width=True, disabled=module_index == len(outline["modules"]) - 1):
-                        _move_module(module_index, module_index + 1)
-                        st.rerun()
-                    if st.button("Delete Module", key=f"delete_module_{module_index}", use_container_width=True):
-                        _delete_module(module_index)
-                        st.rerun()
+                with st.popover("⋮", use_container_width=True, type="tertiary"):
+                    module_popover_cols = st.columns([1, 1, 1])
+                    with module_popover_cols[0]:
+                        if st.button("⬅️", key=f"move_module_left_{module_index}", use_container_width=True, disabled=module_index == 0, help="Move module left"):
+                            _move_module(module_index, module_index - 1)
+                            st.rerun()
+                    with module_popover_cols[1]:
+                        if st.button("➡️", key=f"move_module_right_{module_index}", use_container_width=True, disabled=module_index == len(outline["modules"]) - 1, help="Move module right"):
+                            _move_module(module_index, module_index + 1)
+                            st.rerun()
+                    with module_popover_cols[2]:
+                        if st.button("🗑️", key=f"delete_module_{module_index}", use_container_width=True, help="Delete module"):
+                            _delete_module(module_index)
+                            st.rerun()
 
             outline_text_field("Module title", f"modules.{module_index}.moduleTitle", module.get("moduleTitle", ""))
             outline_text_field("Module overview", f"modules.{module_index}.overview", module.get("overview", ""), area=True)
@@ -320,20 +324,24 @@ def display_editable_outline(outline: Dict[str, Any]):
                 section.setdefault("units", [])
 
                 with st.container(border=True):
-                    section_header_cols = st.columns([8, 1], vertical_alignment="center")
+                    section_header_cols = st.columns([10, 1], vertical_alignment="center")
                     with section_header_cols[0]:
                         st.markdown(f"#### :orange[Section {module_index + 1}.{section_index + 1}: {section.get('sectionTitle', 'Untitled section') or 'Untitled section'}]")
                     with section_header_cols[1]:
-                        with st.popover("⋮ Options", use_container_width=True):
-                            if st.button("Move Up", key=f"move_section_up_{module_index}_{section_index}", use_container_width=True, disabled=section_index == 0):
-                                _move_section(module_index, section_index, section_index - 1)
-                                st.rerun()
-                            if st.button("Move Down", key=f"move_section_down_{module_index}_{section_index}", use_container_width=True, disabled=section_index == len(module["sections"]) - 1):
-                                _move_section(module_index, section_index, section_index + 1)
-                                st.rerun()
-                            if st.button("Delete Section", key=f"delete_section_{module_index}_{section_index}", use_container_width=True):
-                                _delete_section(module_index, section_index)
-                                st.rerun()
+                        with st.popover("⋮", use_container_width=True, type="tertiary"):
+                            section_popover_cols = st.columns([1, 1, 1])
+                            with section_popover_cols[0]:
+                                if st.button("⬆️", key=f"move_section_up_{module_index}_{section_index}", use_container_width=True, disabled=section_index == 0, help="Move section up"):
+                                    _move_section(module_index, section_index, section_index - 1)
+                                    st.rerun()
+                            with section_popover_cols[1]:
+                                if st.button("⬇️", key=f"move_section_down_{module_index}_{section_index}", use_container_width=True, disabled=section_index == len(module["sections"]) - 1, help="Move section down"):
+                                    _move_section(module_index, section_index, section_index + 1)
+                                    st.rerun()
+                            with section_popover_cols[2]:
+                                if st.button("🗑️", key=f"delete_section_{module_index}_{section_index}", use_container_width=True, help="Delete section"):
+                                    _delete_section(module_index, section_index)
+                                    st.rerun()
 
                     outline_text_field("Section title", f"modules.{module_index}.sections.{section_index}.sectionTitle", section.get("sectionTitle", ""))
                     outline_text_field(
@@ -342,40 +350,43 @@ def display_editable_outline(outline: Dict[str, Any]):
                         "\n".join(section.get("sectionLevelObjectives", [])),
                         area=True,
                     )
+                    with st.expander("**Units**", expanded=False):
+                        for unit_index, unit in enumerate(section["units"]):
+                            unit_name = unit.get("unitTitle", "") or "Untitled unit"
+                            unit_cols = st.columns([8, 1, 1], vertical_alignment="center")
+                            with unit_cols[0]:
+                                st.markdown(f"📄 Unit {module_index + 1}.{section_index + 1}.{unit_index + 1}: {unit_name}")
+                            with unit_cols[1]:
+                                if st.button("✏️", key=f"edit_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True, type="tertiary"):
+                                    _clear_unit_dialog_widget_cache()
+                                    _edit_unit_dialog(module_index, section_index, unit_index)
+                            with unit_cols[2]:
+                                with st.popover("⋮", use_container_width=True, type="tertiary"):
+                                    unit_popover_cols = st.columns([1, 1, 1])
+                                    with unit_popover_cols[0]:
+                                        if st.button("⬆️", key=f"move_unit_up_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == 0, help="Move unit up"):
+                                            _move_unit(module_index, section_index, unit_index, unit_index - 1)
+                                            st.rerun()
+                                    with unit_popover_cols[1]:
+                                        if st.button("⬇️", key=f"move_unit_down_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == len(section["units"]) - 1, help="Move unit down"):
+                                            _move_unit(module_index, section_index, unit_index, unit_index + 1)
+                                            st.rerun()
+                                    with unit_popover_cols[2]:
+                                        if st.button("🗑️", key=f"delete_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True, help="Delete unit"):
+                                            _delete_unit(module_index, section_index, unit_index)
+                                            st.rerun()
 
-                    st.markdown("**Units**")
-                    for unit_index, unit in enumerate(section["units"]):
-                        unit_name = unit.get("unitTitle", "") or "Untitled unit"
-                        unit_cols = st.columns([8, 1, 1], vertical_alignment="center")
-                        with unit_cols[0]:
-                            st.markdown(f"📄 Unit {module_index + 1}.{section_index + 1}.{unit_index + 1}: {unit_name}")
-                        with unit_cols[1]:
-                            if st.button("✏️ Edit", key=f"edit_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True):
-                                _clear_unit_dialog_widget_cache()
-                                _edit_unit_dialog(module_index, section_index, unit_index)
-                        with unit_cols[2]:
-                            with st.popover("⋮", use_container_width=True):
-                                if st.button("Move Up", key=f"move_unit_up_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == 0):
-                                    _move_unit(module_index, section_index, unit_index, unit_index - 1)
-                                    st.rerun()
-                                if st.button("Move Down", key=f"move_unit_down_{module_index}_{section_index}_{unit_index}", use_container_width=True, disabled=unit_index == len(section["units"]) - 1):
-                                    _move_unit(module_index, section_index, unit_index, unit_index + 1)
-                                    st.rerun()
-                                if st.button("Delete", key=f"delete_unit_{module_index}_{section_index}_{unit_index}", use_container_width=True):
-                                    _delete_unit(module_index, section_index, unit_index)
-                                    st.rerun()
-
-                    if st.button("➕ Add Unit", key=f"add_unit_{module_index}_{section_index}"):
-                        _add_unit(module_index, section_index)
-                        st.rerun()
+                        if st.button("➕ Add Unit", key=f"add_unit_{module_index}_{section_index}"):
+                            _add_unit(module_index, section_index)
+                            st.rerun()
 
             if st.button("➕ Add Section", key=f"add_section_{module_index}", use_container_width=True):
                 _add_section(module_index)
                 st.rerun()
 
     with module_tabs[-1]:
-        st.markdown("### Add a new module")
-        if st.button("➕ Add Module", key="add_module_tab_button", type="primary", use_container_width=True):
+        #st.markdown("### Add a new module")
+        if st.button("➕ Add New Module", key="add_module_tab_button", type="primary", use_container_width=True):
             _add_module()
             st.rerun()
 
