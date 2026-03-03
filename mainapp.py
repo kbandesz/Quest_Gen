@@ -11,6 +11,7 @@ from app.display_questions import (
     clear_deleted_question_widget_state,
     create_empty_question,
     display_editable_question,
+    display_question_actions,
     display_static_question,
 )
 from app.save_load_progress import save_load_panel, apply_pending_restore
@@ -716,16 +717,21 @@ def render_step_4():
             for idx, q in enumerate(qs):
                 stem_preview = q.get("stem") or "(no question stem)"
                 if ss["editable_questions"]:
-                    st.markdown(f"**{idx + 1}. {stem_preview}**")
-                    with st.expander("Edit question", expanded=False):
-                    # Display editable question
-                        question_action = display_editable_question(lo["id"], idx, len(qs), q)
+                    question_header_cols = st.columns([10, 1], vertical_alignment="center")
+                    with question_header_cols[0]:
+                        st.markdown(f"**{idx + 1}. {stem_preview}**")
+                    with question_header_cols[1]:
+                        question_action = display_question_actions(lo["id"], idx, len(qs), q)
                         if question_action == "delete":
                             pending_delete_idx = idx
                         elif question_action == "move_up":
                             pending_move = (idx, idx - 1)
                         elif question_action == "move_down":
                             pending_move = (idx, idx + 1)
+
+                    with st.expander("Edit question", expanded=False):
+                    # Display editable question
+                        display_editable_question(lo["id"], q)
                 else:
                     with st.expander(f"**{idx + 1}. {stem_preview}**", expanded=False):
                         display_static_question(q)
