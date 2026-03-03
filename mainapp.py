@@ -69,7 +69,15 @@ with st.sidebar:
     # Toggle mock mode
     st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
     # Select model
-    model_options = ["gpt-4.1, gpt-5-mini", "gpt-5", "gpt-5.2"]
+    model_options = ["gpt-4.1", "gpt-5-mini", "gpt-5", "gpt-5.2"]
+
+    current_model = ss.get("OPENAI_MODEL")
+    if current_model not in model_options:
+        legacy_model_map = {
+            "gpt-4.1, gpt-5-mini": "gpt-4.1",
+        }
+        ss["OPENAI_MODEL"] = legacy_model_map.get(current_model, model_options[0])
+
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
