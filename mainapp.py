@@ -592,11 +592,23 @@ def render_step_3():
 
     # --- Check All / Accept All buttons ---
     st.write("")
+    los_with_pending_alignment = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and lo.get("alignment") is None
+    ]
+    los_ready_to_accept = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and not lo.get("final_text")
+    ]
     all_btn_cols = st.columns([1, 1])
     with all_btn_cols[0]:
-        if st.button("Check All", type="primary", disabled=not ss["los"]):
+        if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
             with st.spinner("Checking all learning objectives..."):
-                for lo in ss["los"]:
+                for lo in los_with_pending_alignment:
                     try:
                         lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
                     except RuntimeError as err:
@@ -605,8 +617,8 @@ def render_step_3():
                     lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
                 st.rerun()
     with all_btn_cols[1]:
-        if st.button("Accept All", disabled=not ss["los"]):
-            for lo in ss["los"]:
+        if st.button("Accept All", disabled=not los_ready_to_accept):
+            for lo in los_ready_to_accept:
                 lo["final_text"] = lo["text"]
                 # Invalidate questions if needed
                 current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
