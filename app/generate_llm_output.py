@@ -2,6 +2,7 @@
 import os
 import msal
 import json
+import random
 import streamlit as st
 from openai import OpenAI
 from typing import Dict, Any
@@ -24,6 +25,37 @@ class ApiRequestError(RuntimeError):
 
 class ResponseParseError(RuntimeError):
     """Raised when the API response cannot be parsed/validated as expected JSON."""
+
+
+def reshuffle_question_options(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Shuffle option order for every MCQ and keep IDs/correct answer consistent."""
+    questions = payload.get("questions")
+    if not isinstance(questions, list):
+        return payload
+
+    option_ids = ["A", "B", "C", "D"]
+    for question in questions:
+        options = question.get("options")
+        if not isinstance(options, list) or len(options) != len(option_ids):
+            continue
+
+        existing_option_ids = sorted(opt.get("id") for opt in options)
+        original_correct_option_id = question.get("correct_option_id")
+        if existing_option_ids != option_ids or original_correct_option_id not in option_ids:
+            # Leave malformed payload untouched so schema validation can reject it.
+            continue
+
+        original_correct_option = next(
+            opt for opt in options if opt.get("id") == original_correct_option_id
+        )
+
+        random.shuffle(options)
+        for index, option in enumerate(options):
+            option["id"] = option_ids[index]
+
+        question["correct_option_id"] = original_correct_option.get("id")
+
+    return payload
 
 def _is_mock_mode() -> bool:
     """Check if mock mode is enabled from session state."""
@@ -266,9 +298,13 @@ def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,
 
 def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_questions:int=1)->Dict[str,Any]:
     if _is_mock_mode():
-        return const.generate_mock_questions(n_questions)
-    user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
-    obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=4000, temperature=0.4)
+        obj = const.generate_mock_questions(n_questions)
+    else:
+        user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
+        obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=4000, temperature=0.4)
+
+    reshuffle_question_options(obj)
+
     try:
         return validate_questions_payload(obj)
     except ValueError as validation_error:
