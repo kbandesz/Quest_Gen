@@ -54,16 +54,19 @@ def show_api_error(error: Exception) -> None:
 
 ################################################
 # Title and warning based on current mock setting
-mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
+mock_warning = ":red[⚠️ MOCK MODE]"
+st.title(f"BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _Smarter course design—powered by AI._")
 
 active_tool = st.segmented_control(
     "Select Tool",
-    ["Course Outliner", "Module Builder"],
+    ["Course Outliner", "Assessment Builder"],
     selection_mode="single",
+    format_func=lambda x: "**" + x + "**",
     default=ss["active_tool"],
     key="tool_switcher",
+    label_visibility="collapsed",
+    width="stretch",
 )
 if active_tool and active_tool != ss["active_tool"]:
     ss["active_tool"] = active_tool
@@ -830,14 +833,18 @@ def render_builder_questions():
     )
 
 
-
 def render_course_outliner():
-    outliner_step = st.pills(
-        "Outliner Steps",
-        ["Materials", "Outline"],
-        default=ss["outliner_step"],
-        key="outliner_nav",
-    )
+    cols = st.columns([1, 1])
+    with cols[0]:
+        outliner_step = st.pills(
+            "Outliner Steps",
+            ["Materials", "Outline"],
+            format_func=lambda x: x+" >>>" if x != "Outline" else x,
+            default=ss["outliner_step"],
+            key="outliner_nav",
+            label_visibility="collapsed",
+            width="stretch",
+        )
     if outliner_step and outliner_step != ss["outliner_step"]:
         ss["outliner_step"] = outliner_step
     if ss["outliner_step"] == "Materials":
@@ -847,12 +854,17 @@ def render_course_outliner():
 
 
 def render_module_builder():
-    builder_step = st.pills(
-        "Module Steps",
-        ["Materials", "Objectives", "Questions"],
-        default=ss["builder_step"],
-        key="builder_nav",
-    )
+    cols = st.columns([1, 1])
+    with cols[1]:
+        builder_step = st.pills(
+            "Module Steps",
+            ["Materials", "Objectives", "Questions"],
+            format_func=lambda x: x+" >>>" if x != "Questions" else x,
+            default=ss["builder_step"],
+            key="builder_nav",
+            label_visibility="collapsed",
+            width="stretch",
+        )
     if builder_step and builder_step != ss["builder_step"]:
         ss["builder_step"] = builder_step
     if ss["builder_step"] == "Materials":
