@@ -58,6 +58,17 @@ mock_warning = "   :red[⚠️ MOCK MODE is ON]"
 st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
 st.markdown("##### _Smarter course design—powered by AI._")
 
+active_tool = st.segmented_control(
+    "Select Tool",
+    ["Course Outliner", "Module Builder"],
+    selection_mode="single",
+    default=ss["active_tool"],
+    key="tool_switcher",
+)
+if active_tool and active_tool != ss["active_tool"]:
+    ss["active_tool"] = active_tool
+    st.rerun()
+
 ################################################
 # Sidebar for settings
 ################################################
@@ -90,57 +101,9 @@ with st.sidebar:
 
 
 ################################################
-# Visual Stepper
+# Course Outliner: Materials
 ################################################
-def render_stepper():
-    st.write("")
-
-
-    outline = "Plan your course structure"
-    upload = "Add your module files"
-    LOs = "Define and analyze learning objectives"
-    quest_gen = "Create questions with AI support"
-    export = "Export questions to Microsoft Word"
-    
-    steps = [outline, upload, LOs, quest_gen, export]
-
-    # Short button labels (clickable)
-    step_labels = [
-        "📚 1. Outline",
-        "📂 2a. Module ->",
-        "🎯 2b. Objectives ->",
-        "✍️ 2c. Questions ->",
-        "📄 2d. Final Output",
-    ]
-
-    # wrap the whole stepper in a bordered "card"
-    with st.container(border=True):
-        # slightly larger gaps between steps
-        cols = st.columns(len(steps), gap="medium")
-        for i, (col, step_name) in enumerate(zip(cols, steps)):
-            with col:
-                # Clickable button to navigate directly to the step
-                #red, orange, yellow, green, blue, violet, gray/grey, rainbow,
-                if st.button(f"**{step_labels[i]}**", type="tertiary",
-                             disabled=not ss["is_ready_for_step"][i+1], key=f"step_btn_{i+1}"):
-                    ss["current_step"] = i + 1
-                    st.rerun()
-                # Description + Visual indication of current/completed/upcoming steps
-                if i + 1 == ss["current_step"]:
-                    # active step: prominent info callout
-                    st.info(step_name)
-                elif i + 1 < ss["current_step"]:
-                    # completed step: success callout
-                    st.success(step_name)
-                else:
-                    # upcoming step: subtle border box (not plain text)
-                    #with st.container(border=True):
-                    st.markdown(f":grey[{step_name}]")
-
-################################################
-# 1 Course Outline
-################################################
-def render_step_1():
+def render_outliner_materials():
     st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
@@ -199,17 +162,28 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             st.caption("Preview first 5,000 characters")
             st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
+    st.divider()
+    if st.button("Next: Outline Design →", type="primary"):
+        ss["outliner_step"] = "Outline"
+        st.rerun()
+
+
+def render_outliner_design():
+    st.header("🧭 Outline Design")
     # Additional instructor guidance for the AI
-    #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
         ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
-    
+
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
-    ss["outline_guidance"] = st.text_area("**Additional Guidance for the AI (optional)**",
-                                    key="outline_guidance_key",
-                                    help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
-                                    height=80, max_chars=300, disabled=ss["MOCK_MODE"])
+    ss["outline_guidance"] = st.text_area(
+        "**Additional Guidance for the AI (optional)**",
+        key="outline_guidance_key",
+        help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
+        height=80,
+        max_chars=300,
+        disabled=ss["MOCK_MODE"],
+    )
 
     # --- Generate Outline ---
     #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
@@ -260,18 +234,15 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             type="primary" if bool(outline) else "secondary"
         )
 
-    # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[1]:
-        if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
-            ss["current_step"] = 2
-            st.rerun()
+    if st.button("← Back: Materials"):
+        ss["outliner_step"] = "Materials"
+        st.rerun()
 
 ################################################
-# 2 Upload Module Content
+# Module Builder: Materials
 ################################################
-def render_step_2():
+def render_builder_materials():
     st.header("📂 Upload Module Material")  
     st.markdown( """You can upload any content that you will use to develop the module.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
@@ -337,22 +308,15 @@ def render_step_2():
             st.caption("Preview first 5,000 characters")
             st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
-    # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Course Outline"):
-            ss["current_step"] = 1
-            st.rerun()
-    with cols[1]:
-        if st.button("Next: Define Objectives →", disabled=not ss["is_ready_for_step"][3]):
-            ss["current_step"] = 3
-            st.rerun()
+    if st.button("Next: Define Objectives →", disabled=not ss["builder_readiness"]["Objectives"]):
+        ss["builder_step"] = "Objectives"
+        st.rerun()
 
 ################################################
-# 3 Objectives & Alignment
+# Module Builder: Objectives & Alignment
 ################################################
-def render_step_3():
+def render_builder_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
                     you will find information and tips below and AI will also help you refine your objectives."""
@@ -385,6 +349,7 @@ def render_step_3():
             - [Writing Course and Module Learning Objectives](https://intlmonetaryfund.sharepoint.com/teams/Section-OLTeam-ICDIP/Shared%20Documents/Forms/AllItems.aspx?id=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives%2FBloom%27s%20Taxonomy%20%2D%20Objectives%2Epdf&parent=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives)
             """)
     st.write("---")
+    st.info("💡 Starting from scratch? You can write your own objectives below, or switch to the **Course Outliner** tool above to generate them, then import them here.")
 
     if ss["MOCK_MODE"] and not ss["los"]:
         ss["los"].append({
@@ -641,17 +606,17 @@ def render_step_3():
     cols = st.columns([1, 1])
     with cols[0]:
         if st.button("← Back: Module Materials"):
-            ss["current_step"] = 2
+            ss["builder_step"] = "Materials"
             st.rerun()
     with cols[1]:
-        if st.button("Next: Generate Questions →", disabled=not ss["is_ready_for_step"][4]):
-            ss["current_step"] = 4
+        if st.button("Next: Generate Questions →", disabled=not ss["builder_readiness"]["Questions"]):
+            ss["builder_step"] = "Questions"
             st.rerun()
 
 #################################################
-# 4 Generate questions
+# Module Builder: Questions and Export
 #################################################
-def render_step_4():
+def render_builder_questions():
     st.header("✍️ Generate Questions")
     st.markdown(const.QUESTION_TIPS)
     # Helper to check if we can run generation
@@ -781,20 +746,9 @@ def render_step_4():
 
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Define Objectives"):
-            ss["current_step"] = 3
-            st.rerun()
-    with cols[1]:
-        if st.button("Next: Export →", disabled=not ss["is_ready_for_step"][5]):
-            ss["current_step"] = 5
-            st.rerun()
-    
-################################################
-# 5 Export Questions
-################################################
-def render_step_5():
+    if st.button("← Back: Define Objectives"):
+        ss["builder_step"] = "Objectives"
+        st.rerun()
 
     st.header("📄 Export to Word")
     st.markdown("")
@@ -875,25 +829,45 @@ def render_step_5():
         type="primary" if doc_ready else "secondary"
     )
 
-    # --- Navigation ---
-    st.divider()
-    if st.button("← Back: Generate Questions"):
-        ss["current_step"] = 4
-        st.rerun()
+
+
+def render_course_outliner():
+    outliner_step = st.pills(
+        "Outliner Steps",
+        ["Materials", "Outline"],
+        default=ss["outliner_step"],
+        key="outliner_nav",
+    )
+    if outliner_step and outliner_step != ss["outliner_step"]:
+        ss["outliner_step"] = outliner_step
+    if ss["outliner_step"] == "Materials":
+        render_outliner_materials()
+    else:
+        render_outliner_design()
+
+
+def render_module_builder():
+    builder_step = st.pills(
+        "Module Steps",
+        ["Materials", "Objectives", "Questions"],
+        default=ss["builder_step"],
+        key="builder_nav",
+    )
+    if builder_step and builder_step != ss["builder_step"]:
+        ss["builder_step"] = builder_step
+    if ss["builder_step"] == "Materials":
+        render_builder_materials()
+    elif ss["builder_step"] == "Objectives":
+        render_builder_objectives()
+    else:
+        render_builder_questions()
 
 ################################################
 # Main application router
 ################################################
 
 compute_step_readiness(ss)
-render_stepper()
-if ss["current_step"] == 1:
-    render_step_1()
-elif ss["current_step"] == 2:
-    render_step_2()
-elif ss["current_step"] == 3:
-    render_step_3()
-elif ss["current_step"] == 4:
-    render_step_4()
-elif ss["current_step"] == 5:
-    render_step_5()
+if ss["active_tool"] == "Course Outliner":
+    render_course_outliner()
+else:
+    render_module_builder()
