@@ -39,7 +39,25 @@ def reshuffle_question_options(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(options, list) or len(options) != len(option_ids):
             continue
 
-        existing_option_ids = sorted(opt.get("id") for opt in options)
+        existing_option_ids = []
+        malformed_option_ids = False
+        for opt in options:
+            if not isinstance(opt, dict):
+                malformed_option_ids = True
+                break
+
+            option_id = opt.get("id")
+            if not isinstance(option_id, str):
+                malformed_option_ids = True
+                break
+
+            existing_option_ids.append(option_id)
+
+        if malformed_option_ids:
+            # Leave malformed payload untouched so schema validation can reject it.
+            continue
+
+        existing_option_ids = sorted(existing_option_ids)
         original_correct_option_id = question.get("correct_option_id")
         if existing_option_ids != option_ids or original_correct_option_id not in option_ids:
             # Leave malformed payload untouched so schema validation can reject it.
