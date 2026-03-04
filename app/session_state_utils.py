@@ -12,7 +12,9 @@ import streamlit as st
 def init_session_state(ss: SessionStateProxy) -> None:
     """Seed all expected session state keys with defaults."""
 
-    ss.setdefault("current_step", 1)
+    ss.setdefault("tool_step", "Course Outliner")
+    ss.setdefault("outliner_step", "Materials")
+    ss.setdefault("builder_step", "Materials")
     ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
 
     ss.setdefault("course_files", [])
@@ -41,7 +43,15 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("MOCK_MODE", True)
     ss.setdefault("OPENAI_MODEL", "gpt-4.1")
 
-    ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
+    ss.setdefault("outliner_readiness", {
+        "Materials": True,
+        "Outline": True,
+    })
+    ss.setdefault("builder_readiness", {
+        "Materials": True,
+        "Objectives": False,
+        "Questions": False,
+    })
 
 ######## Signature computation helpers ########
 
@@ -89,29 +99,21 @@ def sig_questions(questions: Dict[str, Iterable[Dict[str, Any]]]) -> str:
 
 ####### Navigation helpers ########
 def compute_step_readiness(ss: SessionStateProxy) -> None:
-    """Compute baseline readiness for each step from session state before rendering the stepper.
-    This ensures the top stepper reflects current state even though it's rendered before step content.
-    """
-    # Ensure list shape (index 0 unused; steps 1..5 use indices 1..5)
-    if "is_ready_for_step" not in ss or not isinstance(ss["is_ready_for_step"], list) or len(ss["is_ready_for_step"]) < 6:
-        ss["is_ready_for_step"] = [True]*3 + [False]*3
+    """Compute readiness for outliner and module-builder navigation."""
+    outliner_readiness = {
+        "Materials": True,
+        "Outline": True,
+    }
 
-    # Step 1 is always reachable
-    ss["is_ready_for_step"][1] = True
-
-    # Step 2: always reachable (Step 1 can be skipped entirely)
-    ss["is_ready_for_step"][2] = True
-    #ss["is_ready_for_step"][2] = bool(ss.get("outline")) or bool(ss.get("course_text"))
-
-    # Step 3: ready if module text has been provided (upload or import)
-    ss["is_ready_for_step"][3] = bool(ss.get("module_text"))
-
-    # Step 4: ready if there are learning objectives and all have been accepted/finalized
     los = ss.get("los", [])
-    ss["is_ready_for_step"][4] = bool(los) and all(lo.get("final_text") for lo in los)
+    builder_readiness = {
+        "Materials": True,
+        "Objectives": bool(ss.get("module_text")),
+        "Questions": bool(los) and all(lo.get("final_text") for lo in los),
+    }
 
-    # Step 5: ready if questions exist
-    ss["is_ready_for_step"][5] = bool(ss.get("questions"))
+    ss["outliner_readiness"] = outliner_readiness
+    ss["builder_readiness"] = builder_readiness
 
 ####### Session state manipulation helpers ########
 

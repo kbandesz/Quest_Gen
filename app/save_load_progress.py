@@ -32,6 +32,9 @@ DOMAIN_STATE_KEYS = {
     "questions",
     # "questions_sig",
     "include_opts",
+    "tool_step",
+    "outliner_step",
+    "builder_step",
     # "prev_build_inc_opts",
     # "docx_file",
 }
@@ -53,6 +56,9 @@ _PERSISTED_KEY_NORMALIZERS = {
     "los": lambda value: _normalize_list("los", value),
     "questions": lambda value: _normalize_dict("questions", value),
     "include_opts": lambda value: _normalize_dict("include_opts", value),
+    "tool_step": lambda value: _normalize_str("tool_step", value),
+    "outliner_step": lambda value: _normalize_str("outliner_step", value),
+    "builder_step": lambda value: _normalize_str("builder_step", value),
 }
 
 
@@ -188,8 +194,10 @@ def restore_state(saved_state: dict):
         if key in data:
             ss[key] = data[key]
 
-    # Always return to the first step so users re-orient themselves
-    ss["current_step"] = 1
+    # Always return users to the first surface of the outliner after restore
+    ss["active_tool"] = "Course Outliner"
+    ss["outliner_step"] = "Materials"
+    ss["builder_step"] = "Materials"
 
 
 def apply_pending_restore():

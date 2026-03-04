@@ -26,6 +26,11 @@ class ApiRequestError(RuntimeError):
 class ResponseParseError(RuntimeError):
     """Raised when the API response cannot be parsed/validated as expected JSON."""
 
+def show_api_error(error: Exception) -> None:
+    """Render API failures with full debug details in an expandable area."""
+    st.error("API call failed. See debug details for the full return message.")
+    with st.expander("Debug details", expanded=False):
+        st.code(str(error), language="text")
 
 def reshuffle_question_options(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Shuffle option order for every MCQ and keep IDs/correct answer consistent."""
