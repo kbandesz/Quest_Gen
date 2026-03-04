@@ -32,7 +32,7 @@ DOMAIN_STATE_KEYS = {
     "questions",
     # "questions_sig",
     "include_opts",
-    "active_tool",
+    "tool_step",
     "outliner_step",
     "builder_step",
     # "prev_build_inc_opts",
@@ -56,7 +56,7 @@ _PERSISTED_KEY_NORMALIZERS = {
     "los": lambda value: _normalize_list("los", value),
     "questions": lambda value: _normalize_dict("questions", value),
     "include_opts": lambda value: _normalize_dict("include_opts", value),
-    "active_tool": lambda value: _normalize_str("active_tool", value),
+    "tool_step": lambda value: _normalize_str("tool_step", value),
     "outliner_step": lambda value: _normalize_str("outliner_step", value),
     "builder_step": lambda value: _normalize_str("builder_step", value),
 }

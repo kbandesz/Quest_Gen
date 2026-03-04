@@ -4,7 +4,7 @@ import uuid
 from typing import Dict, Any, List
 
 from app.parse_input_files import extract_text_and_tokens
-from app.generate_llm_output import generate_outline, check_alignment, generate_questions
+from app.generate_llm_output import generate_outline, check_alignment, generate_questions, show_api_error
 from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
 from app.display_questions import (
@@ -20,15 +20,11 @@ from app.session_state_utils import (
     init_session_state,
     sig_alignment,
     sig_question_gen,
-    #sig_outline,
-    sig_questions,
     compute_step_readiness,
     clear_outline_widget_state,
     clear_alignment,
     clear_questions,
-    #clear_module_dependent_outputs,
     apply_module_content,
-    #reset_uploaded_content,
     reset_session,
 )
 
@@ -45,35 +41,14 @@ apply_pending_restore()
 ss = st.session_state
 init_session_state(ss)
 
-
-def show_api_error(error: Exception) -> None:
-    """Render API failures with full debug details in an expandable area."""
-    st.error("API call failed. See debug details for the full return message.")
-    with st.expander("Debug details", expanded=False):
-        st.code(str(error), language="text")
-
 ################################################
 # Title and warning based on current mock setting
-mock_warning = ":red[⚠️ MOCK MODE]"
-st.title(f"BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown("##### _Smarter course design—powered by AI._")
-
-active_tool = st.segmented_control(
-    "Select Tool",
-    ["Course Outliner", "Assessment Builder"],
-    selection_mode="single",
-    format_func=lambda x: "**" + x + "**",
-    default=ss["active_tool"],
-    key="tool_switcher",
-    label_visibility="collapsed",
-    width="stretch",
-)
-if active_tool and active_tool != ss["active_tool"]:
-    ss["active_tool"] = active_tool
-    st.rerun()
+mock_warning = ":red[MOCK MODE]"
+st.title(f":rainbow[BEACON-Design] {mock_warning if ss['MOCK_MODE'] else ''}")
+st.markdown(f"##### _Smarter course design—powered by AI._")
 
 ################################################
-# Sidebar for settings
+# Sidebar for settings & save/load
 ################################################
 with st.sidebar:
 
@@ -95,7 +70,7 @@ with st.sidebar:
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
-    # Save/load progress ---
+    # Save/load session ---
     save_load_panel()
 
     # Reset button to start over with clean slate
@@ -112,10 +87,10 @@ def render_outliner_materials():
 
 A course outline acts as a blueprint for the course, ensuring a goal-oriented, logical, and structured learning experience for participants. Once finalized, it helps streamline the entire course development process.
 """)
-    with st.expander("**Structure of an IMF course**", expanded=False):
+    with st.expander("**Structure of an IMF course**", expanded=True):
         st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
     
-    st.markdown("The first step (1. Outline) of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
+    st.markdown("The **Course Outliner** tool of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
     # --- User Inputs ---
     files = st.file_uploader(
         "**Upload Source Materials (e.g., papers, presentations, notes)**",
@@ -166,16 +141,18 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     st.divider()
-    if st.button("Next: Outline Design →", type="primary"):
-        ss["outliner_step"] = "Outline"
-        st.rerun()
-
+    cols = st.columns([2, 1])
+    with cols[1]:
+        st.button("Next: Outline Design →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
 
 def render_outliner_design():
-    st.header("🧭 Outline Design")
+    st.header("Outline Design")
+    st.markdown("""Our AI agents received detailed guidance on instructional design best practices related to course outlines. They were also instructed to design outlines that satisfy the formal requreiments of IMF courses.
+                However, you can provide further instructions for generating or refining your course outline. Be parsimonious and rely on an iterative human-AI collaboration rather than trying to overload the AI with detailed requirements.
+                """)
     # Additional instructor guidance for the AI
     if ss["MOCK_MODE"]:
-        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
+        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 2 moduls."
 
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
@@ -238,12 +215,10 @@ def render_outliner_design():
         )
 
     st.divider()
-    if st.button("← Back: Materials"):
-        ss["outliner_step"] = "Materials"
-        st.rerun()
+    st.button("← Back: Materials", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
 
 ################################################
-# Module Builder: Materials
+# Assessment Builder: Materials
 ################################################
 def render_builder_materials():
     st.header("📂 Upload Module Material")  
@@ -312,12 +287,14 @@ def render_builder_materials():
             st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     st.divider()
-    if st.button("Next: Define Objectives →", disabled=not ss["builder_readiness"]["Objectives"]):
-        ss["builder_step"] = "Objectives"
-        st.rerun()
+    cols = st.columns([2, 1])
+    with cols[1]:
+        st.button("Next: Define Objectives →",
+                  on_click=lambda: ss.update({"key_builder_nav": "Objectives"}),
+                  disabled=not ss["builder_readiness"]["Objectives"])
 
 ################################################
-# Module Builder: Objectives & Alignment
+# Assessment Builder: Objectives & Alignment
 ################################################
 def render_builder_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
@@ -606,18 +583,19 @@ def render_builder_objectives():
 
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
+    cols = st.columns([2, 1])
     with cols[0]:
-        if st.button("← Back: Module Materials"):
-            ss["builder_step"] = "Materials"
-            st.rerun()
+        st.button("← Back: Module Materials",
+                  on_click=lambda: ss.update({"key_builder_nav": "Materials"}),
+                  )
     with cols[1]:
-        if st.button("Next: Generate Questions →", disabled=not ss["builder_readiness"]["Questions"]):
-            ss["builder_step"] = "Questions"
-            st.rerun()
+        st.button("Next: Generate Questions →",
+                  on_click=lambda: ss.update({"key_builder_nav": "Questions"}),
+                  disabled=not ss["builder_readiness"]["Questions"],
+                  )
 
 #################################################
-# Module Builder: Questions and Export
+# Assessment Builder: Questions and Export
 #################################################
 def render_builder_questions():
     st.header("✍️ Generate Questions")
@@ -740,19 +718,10 @@ def render_builder_questions():
                     qs.append(create_empty_question())
                     st.rerun()
 
-    # # After all widgets have applied edits, detect real changes
-    # new_q_sig = sig_questions(ss.get("questions", {}))
-    # if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
-    #     # User changed questions → previously built DOCX is now stale
-    #     ss["docx_file"] = "" #None
-    # ss["questions_sig"] = new_q_sig
 
-    # --- Navigation ---
-    st.divider()
-    if st.button("← Back: Define Objectives"):
-        ss["builder_step"] = "Objectives"
-        st.rerun()
 
+    # Export to Word
+    st.subheader("", divider="blue")
     st.header("📄 Export to Word")
     st.markdown("")
 
@@ -790,26 +759,6 @@ def render_builder_questions():
         "rationale": inc_rationale,
     }
 
-    
-    
-    # cols = st.columns([1,1])
-    # with cols[0]:
-    #     if st.button("Build question DOCX"):
-    #         ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
-    #         ss["prev_build_inc_opts"] = ss['include_opts']
-    # with cols[1]:
-    #     no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
-    #     help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
-    #     st.download_button(
-    #         "Download questions",
-    #         data=ss.get("docx_file", ""),
-    #         file_name="assessment_questions.docx",
-    #         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    #         disabled = no_docx_for_selection,
-    #         type="primary" if not no_docx_for_selection else "secondary",
-    #         help=help_string if no_docx_for_selection else ""
-    #         )        
-
     # Download button with on-the-fly generation (cached)
     st.markdown("")
     questions = ss.get("questions", {})
@@ -832,54 +781,88 @@ def render_builder_questions():
         type="primary" if doc_ready else "secondary"
     )
 
+    # --- Navigation ---
+    st.divider()
+    st.button("← Back: Define Objectives",
+              on_click=lambda: ss.update({"key_builder_nav": "Objectives"}),
+              )
 
+
+################################################
+# Main application router (navigation bar)
+################################################
+
+# Callback to manage navigation states
+def handle_nav(parent: str):
+    """Returns a callback function to handle navigation changes for a given parent component.
+    The callback ensures that if the navigation key is set to None, it reverts back to the current step.
+    Requires strict naming convention for session state keys.
+    """
+    if ss[f"key_{parent}_nav"] is None:
+        ss[f"key_{parent}_nav"] = ss[f"{parent}_step"]
+    else:
+        ss[f"{parent}_step"] = ss[f"key_{parent}_nav"]
+
+# Top level navigation (tool choice)
+def render_tool_picker():
+    if "key_tool_nav" not in ss:
+        ss["key_tool_nav"] = ss["tool_step"]
+    st.segmented_control(
+        "Select Tool",
+        ["Course Outliner", "Assessment Builder"],
+        selection_mode="single",
+        format_func=lambda x: f"**{x}**",
+        key="key_tool_nav",
+        on_change = handle_nav(parent = "tool"),
+        label_visibility="collapsed",
+        width="stretch",
+    )
+
+# Level-2 navigation and routing in Course Outliner component
 def render_course_outliner():
-    cols = st.columns([1, 1])
-    with cols[0]:
-        outliner_step = st.pills(
-            "Outliner Steps",
-            ["Materials", "Outline"],
-            format_func=lambda x: x+" >>>" if x != "Outline" else x,
-            default=ss["outliner_step"],
-            key="outliner_nav",
-            label_visibility="collapsed",
-            width="stretch",
-        )
-    if outliner_step and outliner_step != ss["outliner_step"]:
-        ss["outliner_step"] = outliner_step
+    if "key_outliner_nav" not in ss:
+        ss["key_outliner_nav"] = ss["outliner_step"]
+    st.pills(
+        "Outliner Steps",
+        ["Materials", "Outline"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Outline" else x,
+        key="key_outliner_nav",
+        on_change=handle_nav(parent = "outliner"),
+        #default=ss.outliner_step,
+        label_visibility="collapsed",
+        width="stretch",
+        )   
+      
     if ss["outliner_step"] == "Materials":
         render_outliner_materials()
-    else:
+    elif ss["outliner_step"] == "Outline":
         render_outliner_design()
 
-
-def render_module_builder():
-    cols = st.columns([1, 1])
-    with cols[1]:
-        builder_step = st.pills(
-            "Module Steps",
-            ["Materials", "Objectives", "Questions"],
-            format_func=lambda x: x+" >>>" if x != "Questions" else x,
-            default=ss["builder_step"],
-            key="builder_nav",
-            label_visibility="collapsed",
-            width="stretch",
+# Level-2 navigation and routing in Assessment Builder component
+def render_assessment_builder():
+    if "key_builder_nav" not in ss:
+        ss["key_builder_nav"] = ss["builder_step"]
+    st.pills(
+        "Assessment Steps",
+        ["Materials", "Objectives", "Questions"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Questions" else x,
+        key="key_builder_nav",
+        on_change=handle_nav(parent = "builder"),
+        label_visibility="collapsed",
+        width="stretch",
         )
-    if builder_step and builder_step != ss["builder_step"]:
-        ss["builder_step"] = builder_step
+    
     if ss["builder_step"] == "Materials":
         render_builder_materials()
     elif ss["builder_step"] == "Objectives":
         render_builder_objectives()
-    else:
+    elif ss["builder_step"] == "Questions":
         render_builder_questions()
 
-################################################
-# Main application router
-################################################
-
+# Level-1 navigation between top components
 compute_step_readiness(ss)
-if ss["active_tool"] == "Course Outliner":
+render_tool_picker()
+if ss["tool_step"] == "Course Outliner":
     render_course_outliner()
-else:
-    render_module_builder()
+elif ss["tool_step"] == "Assessment Builder":
+    render_assessment_builder()

@@ -12,7 +12,7 @@ import streamlit as st
 def init_session_state(ss: SessionStateProxy) -> None:
     """Seed all expected session state keys with defaults."""
 
-    ss.setdefault("active_tool", "Course Outliner")
+    ss.setdefault("tool_step", "Course Outliner")
     ss.setdefault("outliner_step", "Materials")
     ss.setdefault("builder_step", "Materials")
     ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
