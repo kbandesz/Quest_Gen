@@ -144,7 +144,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
-        st.button("Next: Outline Design →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
+        st.button("Next: Design Outline →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
 
 def render_outliner_design():
     st.header("Outline Design")
@@ -201,12 +201,12 @@ def render_outliner_design():
 
         # --- Export outline ---
         st.markdown("---")
-        st.markdown("#### Export outline")
+        st.markdown("#### 📄 Export to Word")
 
         outline = ss.get("outline")
 
         st.download_button(
-            "Download outline",
+            "Download",
             data=lambda: build_outline_docx_cached(outline),
             file_name="course_outline.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -216,7 +216,7 @@ def render_outliner_design():
         )
 
     st.divider()
-    st.button("← Back: Materials", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
+    st.button("← Back: Materials for Outline", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
 
 ################################################
 # Assessment Builder: Materials
@@ -290,7 +290,7 @@ def render_lo_analysis_materials():
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
-        st.button("Next: Define Objectives →",
+        st.button("Next: Define and Analyze Objectives →",
                   on_click=lambda: ss.update({"key_lo_analysis_nav": "Objectives"}),
                   disabled=not ss["lo_analysis_readiness"]["Objectives"])
 
@@ -544,49 +544,49 @@ def render_lo_analysis_objectives():
             import_lo_dialog(module_labels, label_to_index, outline_modules)  # <-- shows modal
 
 
-    # --- Check All / Accept All buttons ---
-    # st.write("")
-    # los_with_pending_alignment = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and lo.get("alignment") is None
-    # ]
-    # los_ready_to_accept = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and not lo.get("final_text")
-    # ]
-    # all_btn_cols = st.columns([1, 1])
-    # with all_btn_cols[0]:
-    #     if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
-    #         with st.spinner("Checking all learning objectives..."):
-    #             for lo in los_with_pending_alignment:
-    #                 try:
-    #                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
-    #                 except RuntimeError as err:
-    #                     show_api_error(err)
-    #                     return
-    #                 lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
-    #             st.rerun()
-    # with all_btn_cols[1]:
-    #     if st.button("Accept All", disabled=not los_ready_to_accept):
-    #         for lo in los_ready_to_accept:
-    #             lo["final_text"] = lo["text"]
-    #             # Invalidate questions if needed
-    #             current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
-    #             prev_gen_sig = lo.get("generation_sig")
-    #             if prev_gen_sig and prev_gen_sig != current_gen_sig:
-    #                 clear_questions(ss, lo["id"])
-    #                 lo["generation_sig"] = None
-    #         st.rerun()
+    #--- Check All / Accept All buttons ---
+    st.write("")
+    los_with_pending_alignment = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and lo.get("alignment") is None
+    ]
+    los_ready_to_accept = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and not lo.get("final_text")
+    ]
+    all_btn_cols = st.columns([1, 1])
+    with all_btn_cols[0]:
+        if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
+            with st.spinner("Checking all learning objectives..."):
+                for lo in los_with_pending_alignment:
+                    try:
+                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
+                    except RuntimeError as err:
+                        show_api_error(err)
+                        return
+                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
+                st.rerun()
+    with all_btn_cols[1]:
+        if st.button("Accept All", disabled=not los_ready_to_accept):
+            for lo in los_ready_to_accept:
+                lo["final_text"] = lo["text"]
+                # Invalidate questions if needed
+                current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                prev_gen_sig = lo.get("generation_sig")
+                if prev_gen_sig and prev_gen_sig != current_gen_sig:
+                    clear_questions(ss, lo["id"])
+                    lo["generation_sig"] = None
+            st.rerun()
 
     # --- Navigation ---
     st.divider()
     cols = st.columns([2, 1])
     with cols[0]:
-        st.button("← Back: Materials",
+        st.button("← Back: Materials for LOs",
                   on_click=lambda: ss.update({"key_lo_analysis_nav": "Materials"}),
                   )
 
@@ -845,7 +845,7 @@ def render_builder_questions():
 
     # --- Navigation ---
     st.divider()
-    st.button("← Back: Module Materials",
+    st.button("← Back: Materials for Questions",
               on_click=lambda: ss.update({"key_builder_nav": "Materials"}),
               )
 
