@@ -14,6 +14,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
 
     ss.setdefault("tool_step", "Course Outliner")
     ss.setdefault("outliner_step", "Materials")
+    ss.setdefault("lo_analysis_step", "Materials")
     ss.setdefault("builder_step", "Materials")
     ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
 
@@ -26,6 +27,11 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("module_text", "")
     ss.setdefault("module_tokens", 0)
     ss.setdefault("module_sig", "")
+
+    ss.setdefault("lo_material_files", [])
+    ss.setdefault("lo_material_text", "")
+    ss.setdefault("lo_material_tokens", 0)
+    ss.setdefault("lo_material_sig", "")
 
     ss.setdefault("los", [])
     ss.setdefault("questions", {})
@@ -49,8 +55,11 @@ def init_session_state(ss: SessionStateProxy) -> None:
     })
     ss.setdefault("builder_readiness", {
         "Materials": True,
-        "Objectives": False,
         "Questions": False,
+    })
+    ss.setdefault("lo_analysis_readiness", {
+        "Materials": True,
+        "Objectives": False,
     })
 
 ######## Signature computation helpers ########
@@ -108,12 +117,16 @@ def compute_step_readiness(ss: SessionStateProxy) -> None:
     los = ss.get("los", [])
     builder_readiness = {
         "Materials": True,
-        "Objectives": bool(ss.get("module_text")),
-        "Questions": bool(los) and all(lo.get("final_text") for lo in los),
+        "Questions": bool(ss.get("module_text")) and bool(los) and all(lo.get("final_text") for lo in los),
+    }
+    lo_analysis_readiness = {
+        "Materials": True,
+        "Objectives": bool(ss.get("lo_material_text")),
     }
 
     ss["outliner_readiness"] = outliner_readiness
     ss["builder_readiness"] = builder_readiness
+    ss["lo_analysis_readiness"] = lo_analysis_readiness
 
 ####### Session state manipulation helpers ########
 
@@ -183,8 +196,10 @@ def apply_module_content(ss: SessionStateProxy, text: Optional[str], tokens: Opt
     current_sig = ss.get("module_sig")
 
     if current_sig and new_mod_sig != current_sig:
-        st.toast("Module content changed — LOs and questions cleared.")
-        clear_module_dependent_outputs(ss)
+        st.toast("Module content changed — generated questions cleared.")
+        for lo in ss.get("los", []) or []:
+            lo["generation_sig"] = None
+        clear_questions(ss)
 
     ss["module_files"] = file_names
     ss["module_text"] = text
@@ -192,10 +207,31 @@ def apply_module_content(ss: SessionStateProxy, text: Optional[str], tokens: Opt
     ss["module_sig"] = new_mod_sig
 
 
+def apply_lo_material_content(ss: SessionStateProxy, text: Optional[str], tokens: Optional[int], file_names: Optional[List[str]]) -> None:
+    """Update session state with LO analysis material and clear alignment outputs if needed."""
+    text = text or ""
+    tokens = tokens or 0
+    file_names = file_names or []
+
+    new_material_sig = sig_module(text)
+    current_sig = ss.get("lo_material_sig")
+
+    if current_sig and new_material_sig != current_sig:
+        st.toast("LO analysis material changed — alignment checks cleared.")
+        for lo in ss.get("los", []) or []:
+            clear_alignment(ss, lo)
+
+    ss["lo_material_files"] = file_names
+    ss["lo_material_text"] = text
+    ss["lo_material_tokens"] = tokens
+    ss["lo_material_sig"] = new_material_sig
+
+
 def reset_uploaded_content(ss: SessionStateProxy) -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []
+    ss["lo_material_files"] = []
     ss["outline_guidance"] = ""
     ss.pop("outline_guidance_key", None)
     ss["course_text"] = ""
@@ -203,6 +239,9 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["module_text"] = ""
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
+    ss["lo_material_text"] = ""
+    ss["lo_material_tokens"] = 0
+    ss["lo_material_sig"] = ""
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
 
 @st.dialog("Confirm Action", dismissible=False, width="small")

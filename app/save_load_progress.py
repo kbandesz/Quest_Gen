@@ -28,12 +28,17 @@ DOMAIN_STATE_KEYS = {
     "module_text",
     "module_tokens",
     "module_sig",
+    "lo_material_files",
+    "lo_material_text",
+    "lo_material_tokens",
+    "lo_material_sig",
     "los",
     "questions",
     # "questions_sig",
     "include_opts",
     "tool_step",
     "outliner_step",
+    "lo_analysis_step",
     "builder_step",
     # "prev_build_inc_opts",
     # "docx_file",
@@ -53,11 +58,16 @@ _PERSISTED_KEY_NORMALIZERS = {
     "module_text": lambda value: _normalize_str("module_text", value),
     "module_tokens": lambda value: _normalize_int("module_tokens", value),
     "module_sig": lambda value: _normalize_str("module_sig", value),
+    "lo_material_files": lambda value: _normalize_list("lo_material_files", value),
+    "lo_material_text": lambda value: _normalize_str("lo_material_text", value),
+    "lo_material_tokens": lambda value: _normalize_int("lo_material_tokens", value),
+    "lo_material_sig": lambda value: _normalize_str("lo_material_sig", value),
     "los": lambda value: _normalize_list("los", value),
     "questions": lambda value: _normalize_dict("questions", value),
     "include_opts": lambda value: _normalize_dict("include_opts", value),
     "tool_step": lambda value: _normalize_str("tool_step", value),
     "outliner_step": lambda value: _normalize_str("outliner_step", value),
+    "lo_analysis_step": lambda value: _normalize_str("lo_analysis_step", value),
     "builder_step": lambda value: _normalize_str("builder_step", value),
 }
 
@@ -197,6 +207,7 @@ def restore_state(saved_state: dict):
     # Always return users to the first surface of the outliner after restore
     ss["active_tool"] = "Course Outliner"
     ss["outliner_step"] = "Materials"
+    ss["lo_analysis_step"] = "Materials"
     ss["builder_step"] = "Materials"
 
 
