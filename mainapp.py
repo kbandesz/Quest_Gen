@@ -25,6 +25,7 @@ from app.session_state_utils import (
     clear_alignment,
     clear_questions,
     apply_module_content,
+    apply_lo_material_content,
     reset_session,
 )
 
@@ -143,7 +144,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
-        st.button("Next: Outline Design →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
+        st.button("Next: Design Outline →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
 
 def render_outliner_design():
     st.header("Outline Design")
@@ -200,12 +201,12 @@ def render_outliner_design():
 
         # --- Export outline ---
         st.markdown("---")
-        st.markdown("#### Export outline")
+        st.markdown("#### 📄 Export to Word")
 
         outline = ss.get("outline")
 
         st.download_button(
-            "Download outline",
+            "Download",
             data=lambda: build_outline_docx_cached(outline),
             file_name="course_outline.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -215,16 +216,16 @@ def render_outliner_design():
         )
 
     st.divider()
-    st.button("← Back: Materials", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
+    st.button("← Back: Materials for Outline", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
 
 ################################################
 # Assessment Builder: Materials
 ################################################
-def render_builder_materials():
-    st.header("📂 Upload Module Material")  
-    st.markdown( """You can upload any content that you will use to develop the module.
+def render_lo_analysis_materials():
+    st.header("📂 Upload Learning Objective Analysis Material")  
+    st.markdown( """You can upload any content that you will use to analyze learning objectives.
                 A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the module content.""")
+                presentations, or any other documents that you plan to use for writing the learning objective analysis.""")
     files: List[Any] = []
     upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
     with upload_col:
@@ -232,7 +233,7 @@ def render_builder_materials():
             "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
             type=["pdf", "docx", "pptx", "txt"],
             accept_multiple_files=True,
-            key=f"module_file_uploader_{ss['uploader_key']}",
+            key=f"lo_material_file_uploader_{ss['uploader_key']}",
             disabled=ss["MOCK_MODE"],
         ) or []
         if ss["MOCK_MODE"]:
@@ -245,7 +246,7 @@ def render_builder_materials():
             disabled=import_disabled,
         ):
             course_files = list(ss.get("course_files") or [])
-            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            apply_lo_material_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
             st.rerun()
 
 # --- Process files based on actual content, not metadata ---
@@ -260,43 +261,43 @@ def render_builder_materials():
             st.error(e)
             text, tokens = "", 0
 
-        prev_module_text = ss.get("module_text", "")
-        apply_module_content(ss, text, tokens, [f.name for f in files])
+        prev_lo_material_text = ss.get("lo_material_text", "")
+        apply_lo_material_content(ss, text, tokens, [f.name for f in files])
         
-        # Rerun if module content changed to update step readiness
-        if ss.get("module_text", "") != prev_module_text:
+        # Rerun if learning objective analysis changed to update step readiness
+        if ss.get("lo_material_text", "") != prev_lo_material_text:
             st.rerun()
 
-    if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
+    if ss.get("lo_material_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
-    if ss["module_files"]:
+    if ss["lo_material_files"]:
         st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["lo_material_files"])])
         st.markdown(current_files)
         with st.expander("View extracted text", expanded=False):
             # Display currently uploaded files from the session state (stable across reruns)
-            # if ss["module_files"]:
+            # if ss["lo_material_files"]:
             #     st.caption("Currently uploaded files (To change, use file picker above):")
-            #     current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+            #     current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["lo_material_files"])])
             #     st.markdown(current_files)
 
             # Display token count & preview from session (stable across reruns)
-            st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+            st.caption(f"Estimated tokens: {ss.get('lo_material_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
-            st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+            st.text_area("Preview", (ss.get("lo_material_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
     
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
-        st.button("Next: Define Objectives →",
-                  on_click=lambda: ss.update({"key_builder_nav": "Objectives"}),
-                  disabled=not ss["builder_readiness"]["Objectives"])
+        st.button("Next: Define and Analyze Objectives →",
+                  on_click=lambda: ss.update({"key_lo_analysis_nav": "Objectives"}),
+                  disabled=not ss["lo_analysis_readiness"]["Objectives"])
 
 ################################################
-# Assessment Builder: Objectives & Alignment
+# Learning Objective Analysis: Objectives & Alignment
 ################################################
-def render_builder_objectives():
+def render_lo_analysis_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
                     you will find information and tips below and AI will also help you refine your objectives."""
@@ -357,7 +358,7 @@ def render_builder_objectives():
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         is_final = bool(lo.get("final_text"))
-        module_sig = ss.get("module_sig", "")
+        module_sig = ss.get("lo_material_sig", "")
         current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
         if prev_align_sig and prev_align_sig != current_align_sig:
@@ -407,11 +408,11 @@ def render_builder_objectives():
                              ):
                     with st.spinner("Checking alignment..."):
                         try:
-                            lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                            lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
                         except RuntimeError as err:
                             show_api_error(err)
                             return
-                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
                         st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=not can_check):
@@ -543,56 +544,117 @@ def render_builder_objectives():
             import_lo_dialog(module_labels, label_to_index, outline_modules)  # <-- shows modal
 
 
-    # --- Check All / Accept All buttons ---
-    # st.write("")
-    # los_with_pending_alignment = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and lo.get("alignment") is None
-    # ]
-    # los_ready_to_accept = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and not lo.get("final_text")
-    # ]
-    # all_btn_cols = st.columns([1, 1])
-    # with all_btn_cols[0]:
-    #     if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
-    #         with st.spinner("Checking all learning objectives..."):
-    #             for lo in los_with_pending_alignment:
-    #                 try:
-    #                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-    #                 except RuntimeError as err:
-    #                     show_api_error(err)
-    #                     return
-    #                 lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
-    #             st.rerun()
-    # with all_btn_cols[1]:
-    #     if st.button("Accept All", disabled=not los_ready_to_accept):
-    #         for lo in los_ready_to_accept:
-    #             lo["final_text"] = lo["text"]
-    #             # Invalidate questions if needed
-    #             current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
-    #             prev_gen_sig = lo.get("generation_sig")
-    #             if prev_gen_sig and prev_gen_sig != current_gen_sig:
-    #                 clear_questions(ss, lo["id"])
-    #                 lo["generation_sig"] = None
-    #         st.rerun()
+    #--- Check All / Accept All buttons ---
+    st.write("")
+    los_with_pending_alignment = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and lo.get("alignment") is None
+    ]
+    los_ready_to_accept = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and not lo.get("final_text")
+    ]
+    all_btn_cols = st.columns([1, 1])
+    with all_btn_cols[0]:
+        if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
+            with st.spinner("Checking all learning objectives..."):
+                for lo in los_with_pending_alignment:
+                    try:
+                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
+                    except RuntimeError as err:
+                        show_api_error(err)
+                        return
+                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
+                st.rerun()
+    with all_btn_cols[1]:
+        if st.button("Accept All", disabled=not los_ready_to_accept):
+            for lo in los_ready_to_accept:
+                lo["final_text"] = lo["text"]
+                # Invalidate questions if needed
+                current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                prev_gen_sig = lo.get("generation_sig")
+                if prev_gen_sig and prev_gen_sig != current_gen_sig:
+                    clear_questions(ss, lo["id"])
+                    lo["generation_sig"] = None
+            st.rerun()
 
     # --- Navigation ---
     st.divider()
     cols = st.columns([2, 1])
     with cols[0]:
-        st.button("← Back: Module Materials",
-                  on_click=lambda: ss.update({"key_builder_nav": "Materials"}),
+        st.button("← Back: Materials for LOs",
+                  on_click=lambda: ss.update({"key_lo_analysis_nav": "Materials"}),
                   )
+
+
+################################################
+# Assessment Builder: Materials
+################################################
+def render_builder_materials():
+    st.header("📂 Upload Module Material")
+    st.markdown("""You can upload any content that you will use to develop the module.
+                A draft module plan works best, but you can also upload background papers, guidance notes,
+                presentations, or any other documents that you plan to use for writing the module content.""")
+
+    files: List[Any] = []
+    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
+    with upload_col:
+        files = st.file_uploader(
+            "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
+            type=["pdf", "docx", "pptx", "txt"],
+            accept_multiple_files=True,
+            key=f"module_file_uploader_{ss['uploader_key']}",
+            disabled=ss["MOCK_MODE"],
+        ) or []
+        if ss["MOCK_MODE"]:
+            files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
+
+    with import_col:
+        import_disabled = not bool(ss.get("course_text"))
+        if st.button(
+            "📥 Import source files from Outline step",
+            help="Import all source material uploaded for the course outline",
+            disabled=import_disabled,
+        ):
+            course_files = list(ss.get("course_files") or [])
+            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
+            st.rerun()
+
+    if files:
+        current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+        try:
+            text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
+        except Exception as e:
+            st.error(e)
+            text, tokens = "", 0
+
+        prev_module_text = ss.get("module_text", "")
+        apply_module_content(ss, text, tokens, [f.name for f in files])
+        if ss.get("module_text", "") != prev_module_text:
+            st.rerun()
+
+    if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
+        st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+
+    if ss["module_files"]:
+        st.caption("Currently uploaded files (To change, use file picker above):")
+        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
+        st.markdown(current_files)
+        with st.expander("View extracted text", expanded=False):
+            st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+
+    st.divider()
+    cols = st.columns([2, 1])
     with cols[1]:
         st.button("Next: Generate Questions →",
                   on_click=lambda: ss.update({"key_builder_nav": "Questions"}),
-                  disabled=not ss["builder_readiness"]["Questions"],
-                  )
+                  disabled=not ss["builder_readiness"]["Questions"])
 
 #################################################
 # Assessment Builder: Questions and Export
@@ -783,8 +845,8 @@ def render_builder_questions():
 
     # --- Navigation ---
     st.divider()
-    st.button("← Back: Define Objectives",
-              on_click=lambda: ss.update({"key_builder_nav": "Objectives"}),
+    st.button("← Back: Materials for Questions",
+              on_click=lambda: ss.update({"key_builder_nav": "Materials"}),
               )
 
 
@@ -809,7 +871,7 @@ def render_tool_picker():
         ss["key_tool_nav"] = ss["tool_step"]
     st.segmented_control(
         "Select Tool",
-        ["Course Outliner", "Assessment Builder"],
+        ["Course Outliner", "Learning Objective Analysis", "Assessment Builder"],
         selection_mode="single",
         format_func=lambda x: f"**{x}**",
         key="key_tool_nav",
@@ -838,24 +900,41 @@ def render_course_outliner():
     elif ss["outliner_step"] == "Outline":
         render_outliner_design()
 
+# Level-2 navigation and routing in Learning Objective Analysis component
+def render_lo_analysis():
+    if "key_lo_analysis_nav" not in ss:
+        ss["key_lo_analysis_nav"] = ss["lo_analysis_step"]
+    st.pills(
+        "Learning Objective Analysis Steps",
+        ["Materials", "Objectives"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Objectives" else x,
+        key="key_lo_analysis_nav",
+        on_change=handle_nav(parent = "lo_analysis"),
+        label_visibility="collapsed",
+        width="stretch",
+        )
+
+    if ss["lo_analysis_step"] == "Materials":
+        render_lo_analysis_materials()
+    elif ss["lo_analysis_step"] == "Objectives":
+        render_lo_analysis_objectives()
+
 # Level-2 navigation and routing in Assessment Builder component
 def render_assessment_builder():
     if "key_builder_nav" not in ss:
         ss["key_builder_nav"] = ss["builder_step"]
     st.pills(
         "Assessment Steps",
-        ["Materials", "Objectives", "Questions"],
+        ["Materials", "Questions"],
         format_func=lambda x: f"{x} &emsp; >>>" if x != "Questions" else x,
         key="key_builder_nav",
         on_change=handle_nav(parent = "builder"),
         label_visibility="collapsed",
         width="stretch",
         )
-    
+
     if ss["builder_step"] == "Materials":
         render_builder_materials()
-    elif ss["builder_step"] == "Objectives":
-        render_builder_objectives()
     elif ss["builder_step"] == "Questions":
         render_builder_questions()
 
@@ -864,5 +943,7 @@ compute_step_readiness(ss)
 render_tool_picker()
 if ss["tool_step"] == "Course Outliner":
     render_course_outliner()
+elif ss["tool_step"] == "Learning Objective Analysis":
+    render_lo_analysis()
 elif ss["tool_step"] == "Assessment Builder":
     render_assessment_builder()
