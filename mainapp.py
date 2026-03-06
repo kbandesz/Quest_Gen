@@ -1,7 +1,7 @@
 """Main UI logic of the BEACON-Design app."""
 import streamlit as st
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 from app.parse_input_files import extract_text_and_tokens
 from app.generate_llm_output import generate_outline, check_alignment, generate_questions, show_api_error
@@ -79,6 +79,53 @@ with st.sidebar:
         reset_session(ss)
 
 
+def _extract_single_uploaded_file(uploaded_file) -> Tuple[str, int]:
+    file_key = ((uploaded_file.name, getattr(uploaded_file, "size", None), getattr(uploaded_file, "last_modified", None)),)
+    return extract_text_and_tokens([uploaded_file], file_keys=file_key)
+
+
+
+
+def _mock_material_payload() -> Tuple[List[str], str, int]:
+    mock_path = "assets/mock_uploaded_file.txt"
+    with open(mock_path, "r", encoding="utf-8") as handle:
+        mock_text = handle.read().strip()
+    wrapped = f"<mock_uploaded_file.txt>\n\n{mock_text}\n\n</mock_uploaded_file.txt>"
+    return ["mock_uploaded_file.txt"], wrapped, len(wrapped.split())
+def _selected_kb_payload(tool_name: str) -> Tuple[List[str], str, int]:
+    selected = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
+    kb_files = ss.get("knowledge_files") or {}
+    valid_selection = [name for name in selected if name in kb_files]
+    if valid_selection != selected:
+        ss["tool_file_selection"][tool_name] = valid_selection
+
+    texts: List[str] = []
+    tokens = 0
+    for file_name in valid_selection:
+        file_payload = kb_files.get(file_name, {})
+        texts.append(file_payload.get("text", ""))
+        tokens += int(file_payload.get("tokens", 0) or 0)
+    return valid_selection, "\n\n----- FILE BREAK -----\n\n".join([chunk for chunk in texts if chunk]), tokens
+
+
+def _render_material_selection(tool_name: str, state_prefix: str):
+    kb_files = ss.get("knowledge_files") or {}
+    options = list(kb_files.keys())
+    selected_default = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
+    selected = st.multiselect(
+        "Select materials from Knowledge Base",
+        options=options,
+        default=selected_default,
+        key=f"kb_selection_{state_prefix}",
+        disabled=ss["MOCK_MODE"],
+        help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
+    )
+    ss["tool_file_selection"][tool_name] = selected
+
+    if not options:
+        st.info("No files available. Go to **Knowledge Base → Upload** to add source materials.")
+
+
 ################################################
 # Course Outliner: Materials
 ################################################
@@ -90,57 +137,31 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
 """)
     with st.expander("**Structure of an IMF course**", expanded=True):
         st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
-    
-    st.markdown("The **Course Outliner** tool of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
-    # --- User Inputs ---
-    files = st.file_uploader(
-        "**Upload Source Materials (e.g., papers, presentations, notes)**",
-        help="Upload any source materials that will help the AI understand the course context and content.",
-        type=["pdf","docx","pptx","txt"],
-        accept_multiple_files=True,
-        key=f"source_file_uploader_{ss["uploader_key"]}",
-        disabled=ss["MOCK_MODE"]
-        ) or []
-    
-    # In mock mode, override with the mock file
+
+    st.markdown("The **Course Outliner** tool uses files from the Knowledge Base. Select relevant materials below to help AI generate a stronger outline.")
+    _render_material_selection("Course Outliner", "course")
+
     if ss["MOCK_MODE"]:
-        files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
+        selected_files, text, tokens = _mock_material_payload()
+    else:
+        selected_files, text, tokens = _selected_kb_payload("Course Outliner")
 
-    # Compute a stable signature for the current files (for cache keying)
-    current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
+    ss["course_files"] = selected_files
+    ss["course_text"] = text
+    ss["course_tokens"] = tokens
 
-    # Process files
-    if files:
-        with st.spinner("Extracting text. Please wait..."):
-            try:
-                text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
-            except Exception as e:
-                st.error(e)
-                text, tokens = "", 0
+    if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
+        st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
 
-        ss["course_files"] = [f.name for f in files]
-        ss["course_text"] = text
-        ss["course_tokens"] = tokens
-
-        if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
-    
     if ss["course_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
+        st.caption("Selected files from Knowledge Base:")
         current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
         st.markdown(current_files)
         with st.expander(":small[:grey[View extracted text]]", expanded=False):
-            # Display currently uploaded files
-            #if ss["course_files"]:
-            # st.caption("Currently uploaded files (To change, use file picker above):")
-            # current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-            # st.markdown(current_files)
-
-            # Display token count & preview from session (stable across reruns)
             st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
             st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
-    
+
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
@@ -222,71 +243,35 @@ def render_outliner_design():
 # Assessment Builder: Materials
 ################################################
 def render_lo_analysis_materials():
-    st.header("📂 Upload Learning Objective Analysis Material")  
-    st.markdown( """You can upload any content that you will use to analyze learning objectives.
-                A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the learning objective analysis.""")
-    files: List[Any] = []
-    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
-    with upload_col:
-        files = st.file_uploader(
-            "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
-            type=["pdf", "docx", "pptx", "txt"],
-            accept_multiple_files=True,
-            key=f"lo_material_file_uploader_{ss['uploader_key']}",
-            disabled=ss["MOCK_MODE"],
-        ) or []
-        if ss["MOCK_MODE"]:
-            files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
-    with import_col:
-        import_disabled = not bool(ss.get("course_text"))
-        if st.button(
-            "📥 Import source files from Outline step",
-            help="Import all source material uploaded for the course outline",
-            disabled=import_disabled,
-        ):
-            course_files = list(ss.get("course_files") or [])
-            apply_lo_material_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
-            st.rerun()
+    st.header("📂 Select Learning Objective Analysis Material")
+    st.markdown("""Select content from the Knowledge Base that you will use to analyze learning objectives.
+                A draft module plan works best, but you can also select background papers, guidance notes,
+                presentations, or any other supporting documents.""")
 
-# --- Process files based on actual content, not metadata ---
-    if files:
-        # Build cache key for current files
-        current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+    _render_material_selection("Learning Objective Analysis", "lo")
 
-        # Call the extractor (it will use Streamlit cache if file_keys is provided)
-        try:
-            text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
-        except Exception as e:
-            st.error(e)
-            text, tokens = "", 0
+    if ss["MOCK_MODE"]:
+        selected_files, text, tokens = _mock_material_payload()
+    else:
+        selected_files, text, tokens = _selected_kb_payload("Learning Objective Analysis")
 
-        prev_lo_material_text = ss.get("lo_material_text", "")
-        apply_lo_material_content(ss, text, tokens, [f.name for f in files])
-        
-        # Rerun if learning objective analysis changed to update step readiness
-        if ss.get("lo_material_text", "") != prev_lo_material_text:
-            st.rerun()
+    prev_lo_material_text = ss.get("lo_material_text", "")
+    apply_lo_material_content(ss, text, tokens, selected_files)
+    if ss.get("lo_material_text", "") != prev_lo_material_text:
+        st.rerun()
 
     if ss.get("lo_material_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
     if ss["lo_material_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
+        st.caption("Selected files from Knowledge Base:")
         current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["lo_material_files"])])
         st.markdown(current_files)
         with st.expander("View extracted text", expanded=False):
-            # Display currently uploaded files from the session state (stable across reruns)
-            # if ss["lo_material_files"]:
-            #     st.caption("Currently uploaded files (To change, use file picker above):")
-            #     current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["lo_material_files"])])
-            #     st.markdown(current_files)
-
-            # Display token count & preview from session (stable across reruns)
             st.caption(f"Estimated tokens: {ss.get('lo_material_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
             st.text_area("Preview", (ss.get("lo_material_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
-    
+
     st.divider()
     cols = st.columns([2, 1])
     with cols[1]:
@@ -294,9 +279,6 @@ def render_lo_analysis_materials():
                   on_click=lambda: ss.update({"key_lo_analysis_nav": "Objectives"}),
                   disabled=not ss["lo_analysis_readiness"]["Objectives"])
 
-################################################
-# Learning Objective Analysis: Objectives & Alignment
-################################################
 def render_lo_analysis_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
@@ -595,53 +577,28 @@ def render_lo_analysis_objectives():
 # Assessment Builder: Materials
 ################################################
 def render_builder_materials():
-    st.header("📂 Upload Module Material")
-    st.markdown("""You can upload any content that you will use to develop the module.
-                A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the module content.""")
+    st.header("📂 Select Module Material")
+    st.markdown("""Select content from the Knowledge Base that you will use to develop the module.
+                A draft module plan works best, but you can also select background papers, guidance notes,
+                presentations, or any other supporting documents.""")
 
-    files: List[Any] = []
-    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
-    with upload_col:
-        files = st.file_uploader(
-            "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
-            type=["pdf", "docx", "pptx", "txt"],
-            accept_multiple_files=True,
-            key=f"module_file_uploader_{ss['uploader_key']}",
-            disabled=ss["MOCK_MODE"],
-        ) or []
-        if ss["MOCK_MODE"]:
-            files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
+    _render_material_selection("Assessment Builder", "builder")
 
-    with import_col:
-        import_disabled = not bool(ss.get("course_text"))
-        if st.button(
-            "📥 Import source files from Outline step",
-            help="Import all source material uploaded for the course outline",
-            disabled=import_disabled,
-        ):
-            course_files = list(ss.get("course_files") or [])
-            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
-            st.rerun()
+    if ss["MOCK_MODE"]:
+        selected_files, text, tokens = _mock_material_payload()
+    else:
+        selected_files, text, tokens = _selected_kb_payload("Assessment Builder")
 
-    if files:
-        current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
-        try:
-            text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
-        except Exception as e:
-            st.error(e)
-            text, tokens = "", 0
-
-        prev_module_text = ss.get("module_text", "")
-        apply_module_content(ss, text, tokens, [f.name for f in files])
-        if ss.get("module_text", "") != prev_module_text:
-            st.rerun()
+    prev_module_text = ss.get("module_text", "")
+    apply_module_content(ss, text, tokens, selected_files)
+    if ss.get("module_text", "") != prev_module_text:
+        st.rerun()
 
     if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
     if ss["module_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
+        st.caption("Selected files from Knowledge Base:")
         current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
         st.markdown(current_files)
         with st.expander("View extracted text", expanded=False):
@@ -656,9 +613,6 @@ def render_builder_materials():
                   on_click=lambda: ss.update({"key_builder_nav": "Questions"}),
                   disabled=not ss["builder_readiness"]["Questions"])
 
-#################################################
-# Assessment Builder: Questions and Export
-#################################################
 def render_builder_questions():
     st.header("✍️ Generate Questions")
     st.markdown(const.QUESTION_TIPS)
@@ -850,6 +804,75 @@ def render_builder_questions():
               )
 
 
+def render_knowledge_base_upload():
+    st.header("🗂️ Knowledge Base")
+    st.markdown("Upload source files once, then select them in each tool's Materials step.")
+    st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
+
+    files = st.file_uploader(
+        "Upload knowledge files",
+        help="Supported formats: pdf, docx, pptx, txt",
+        type=["pdf", "docx", "pptx", "txt"],
+        accept_multiple_files=True,
+        key=f"kb_file_uploader_{ss['uploader_key']}",
+        disabled=ss["MOCK_MODE"],
+    ) or []
+
+    if files:
+        with st.spinner("Extracting text. Please wait..."):
+            for uploaded_file in files:
+                try:
+                    text, tokens = _extract_single_uploaded_file(uploaded_file)
+                except Exception as exc:
+                    st.error(exc)
+                    continue
+                ss["knowledge_files"][uploaded_file.name] = {
+                    "name": uploaded_file.name,
+                    "text": text,
+                    "tokens": tokens,
+                    "size": getattr(uploaded_file, "size", 0),
+                }
+        st.success("Knowledge Base updated.")
+
+    if ss.get("knowledge_files"):
+        st.markdown("#### Uploaded files")
+        for file_name in list(ss["knowledge_files"].keys()):
+            payload = ss["knowledge_files"][file_name]
+            row_cols = st.columns([6, 2, 1], vertical_alignment="center")
+            row_cols[0].markdown(f"**{file_name}**")
+            row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
+            if row_cols[2].button("Drop", key=f"drop_kb_{file_name}"):
+                selected_in = [
+                    tool_name
+                    for tool_name, selected_files in (ss.get("tool_file_selection") or {}).items()
+                    if file_name in (selected_files or [])
+                ]
+                if selected_in:
+                    st.warning(
+                        f"Cannot drop '{file_name}' because it is selected in: {', '.join(selected_in)}. "
+                        "Please unselect it in those tools first."
+                    )
+                else:
+                    ss["knowledge_files"].pop(file_name, None)
+                    st.rerun()
+    else:
+        st.info("No files uploaded yet.")
+
+
+def render_knowledge_base():
+    if "key_knowledge_base_nav" not in ss:
+        ss["key_knowledge_base_nav"] = ss["knowledge_base_step"]
+    st.pills(
+        "Knowledge Base Steps",
+        ["Upload"],
+        key="key_knowledge_base_nav",
+        on_change=handle_nav(parent="knowledge_base"),
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    render_knowledge_base_upload()
+
+
 ################################################
 # Main application router (navigation bar)
 ################################################
@@ -871,7 +894,7 @@ def render_tool_picker():
         ss["key_tool_nav"] = ss["tool_step"]
     st.segmented_control(
         "Select Tool",
-        ["Course Outliner", "Learning Objective Analysis", "Assessment Builder"],
+        ["Knowledge Base", "Course Outliner", "Learning Objective Analysis", "Assessment Builder"],
         selection_mode="single",
         format_func=lambda x: f"**{x}**",
         key="key_tool_nav",
@@ -941,7 +964,9 @@ def render_assessment_builder():
 # Level-1 navigation between top components
 compute_step_readiness(ss)
 render_tool_picker()
-if ss["tool_step"] == "Course Outliner":
+if ss["tool_step"] == "Knowledge Base":
+    render_knowledge_base()
+elif ss["tool_step"] == "Course Outliner":
     render_course_outliner()
 elif ss["tool_step"] == "Learning Objective Analysis":
     render_lo_analysis()

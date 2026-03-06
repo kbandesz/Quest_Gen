@@ -37,14 +37,17 @@ DOMAIN_STATE_KEYS = {
     # "questions_sig",
     "include_opts",
     "tool_step",
+    "knowledge_base_step",
     "outliner_step",
     "lo_analysis_step",
     "builder_step",
+    "knowledge_files",
+    "tool_file_selection",
     # "prev_build_inc_opts",
     # "docx_file",
 }
 
-CURRENT_SAVE_VERSION = 1
+CURRENT_SAVE_VERSION = 2
 
 _PERSISTED_KEY_NORMALIZERS = {
     "MOCK_MODE": lambda value: _normalize_bool("MOCK_MODE", value),
@@ -66,9 +69,12 @@ _PERSISTED_KEY_NORMALIZERS = {
     "questions": lambda value: _normalize_dict("questions", value),
     "include_opts": lambda value: _normalize_dict("include_opts", value),
     "tool_step": lambda value: _normalize_str("tool_step", value),
+    "knowledge_base_step": lambda value: _normalize_str("knowledge_base_step", value),
     "outliner_step": lambda value: _normalize_str("outliner_step", value),
     "lo_analysis_step": lambda value: _normalize_str("lo_analysis_step", value),
     "builder_step": lambda value: _normalize_str("builder_step", value),
+    "knowledge_files": lambda value: _normalize_dict("knowledge_files", value),
+    "tool_file_selection": lambda value: _normalize_dict("tool_file_selection", value),
 }
 
 
@@ -125,13 +131,24 @@ def _migrate_saved_payload(version: int, payload: dict) -> dict:
 
     migrated = dict(payload)
     while version < CURRENT_SAVE_VERSION:
-        # Placeholder for future migrations, e.g.:
-        # if version == 1:
-        #     migrated = _migrate_v1_to_v2(migrated)
-        #     version = 2
-        raise ValueError(
-            f"Invalid save file: migration path for version {version} not implemented"
-        )
+        if version == 1:
+            migrated_state = dict(migrated.get("state", {}))
+            migrated_state.setdefault("knowledge_base_step", "Upload")
+            migrated_state.setdefault("knowledge_files", {})
+            migrated_state.setdefault(
+                "tool_file_selection",
+                {
+                    "Course Outliner": [],
+                    "Learning Objective Analysis": [],
+                    "Assessment Builder": [],
+                },
+            )
+            migrated["state"] = migrated_state
+            migrated["version"] = 2
+            version = 2
+            continue
+
+        raise ValueError(f"Invalid save file: migration path for version {version} not implemented")
 
     return migrated
 

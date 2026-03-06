@@ -12,7 +12,8 @@ import streamlit as st
 def init_session_state(ss: SessionStateProxy) -> None:
     """Seed all expected session state keys with defaults."""
 
-    ss.setdefault("tool_step", "Course Outliner")
+    ss.setdefault("tool_step", "Knowledge Base")
+    ss.setdefault("knowledge_base_step", "Upload")
     ss.setdefault("outliner_step", "Materials")
     ss.setdefault("lo_analysis_step", "Materials")
     ss.setdefault("builder_step", "Materials")
@@ -32,6 +33,12 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("lo_material_text", "")
     ss.setdefault("lo_material_tokens", 0)
     ss.setdefault("lo_material_sig", "")
+    ss.setdefault("knowledge_files", {})
+    ss.setdefault("tool_file_selection", {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    })
 
     ss.setdefault("los", [])
     ss.setdefault("questions", {})
@@ -242,6 +249,12 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["lo_material_text"] = ""
     ss["lo_material_tokens"] = 0
     ss["lo_material_sig"] = ""
+    ss["knowledge_files"] = {}
+    ss["tool_file_selection"] = {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    }
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
 
 @st.dialog("Confirm Action", dismissible=False, width="small")
