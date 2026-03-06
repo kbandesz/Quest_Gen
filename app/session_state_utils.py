@@ -12,7 +12,8 @@ import streamlit as st
 def init_session_state(ss: SessionStateProxy) -> None:
     """Seed all expected session state keys with defaults."""
 
-    ss.setdefault("tool_step", "Course Outliner")
+    ss.setdefault("tool_step", "Knowledge Base")
+    ss.setdefault("knowledge_base_step", "Upload")
     ss.setdefault("outliner_step", "Materials")
     ss.setdefault("lo_analysis_step", "Materials")
     ss.setdefault("builder_step", "Materials")
@@ -32,6 +33,12 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("lo_material_text", "")
     ss.setdefault("lo_material_tokens", 0)
     ss.setdefault("lo_material_sig", "")
+    ss.setdefault("knowledge_files", {})
+    ss.setdefault("tool_file_selection", {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    })
 
     ss.setdefault("los", [])
     ss.setdefault("questions", {})
@@ -51,7 +58,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
 
     ss.setdefault("outliner_readiness", {
         "Materials": True,
-        "Outline": True,
+        "Outline": False,
     })
     ss.setdefault("builder_readiness", {
         "Materials": True,
@@ -111,7 +118,12 @@ def compute_step_readiness(ss: SessionStateProxy) -> None:
     """Compute readiness for outliner and module-builder navigation."""
     outliner_readiness = {
         "Materials": True,
-        "Outline": True,
+        "Outline": bool(ss.get("course_text")),#True,
+    }
+    
+    lo_analysis_readiness = {
+        "Materials": True,
+        "Objectives": bool(ss.get("lo_material_text")),
     }
 
     los = ss.get("los", [])
@@ -119,14 +131,11 @@ def compute_step_readiness(ss: SessionStateProxy) -> None:
         "Materials": True,
         "Questions": bool(ss.get("module_text")) and bool(los) and all(lo.get("final_text") for lo in los),
     }
-    lo_analysis_readiness = {
-        "Materials": True,
-        "Objectives": bool(ss.get("lo_material_text")),
-    }
 
     ss["outliner_readiness"] = outliner_readiness
-    ss["builder_readiness"] = builder_readiness
     ss["lo_analysis_readiness"] = lo_analysis_readiness
+    ss["builder_readiness"] = builder_readiness
+
 
 ####### Session state manipulation helpers ########
 
@@ -242,6 +251,12 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["lo_material_text"] = ""
     ss["lo_material_tokens"] = 0
     ss["lo_material_sig"] = ""
+    ss["knowledge_files"] = {}
+    ss["tool_file_selection"] = {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    }
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
 
 @st.dialog("Confirm Action", dismissible=False, width="small")
@@ -256,15 +271,17 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
     with col1:
         if st.button("Confirm"):
             # Clear everything and go back to Step 1
-            current_mock_mode = ss.get("MOCK_MODE")
+            pending_mock_mode = ss.get("pending_mock_mode", ss.get("MOCK_MODE"))
             next_uploader_key = ss.get("uploader_key", 0) + 1
             ss.clear()
             ss["uploader_key"] = next_uploader_key
             if mock_mode_change:
-                ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+                ss["MOCK_MODE"] = bool(pending_mock_mode)
+                ss["mock_mode_toggle"] = bool(pending_mock_mode)
             st.rerun() # Rerun to dismiss the dialog and update the app state
     with col2:
         if st.button("Cancel"):
             if mock_mode_change:
-                ss["MOCK_MODE"] = not ss["MOCK_MODE"] # revert the toggle if cancelled
+                ss.pop("pending_mock_mode", None)
+                ss["mock_mode_toggle"] = ss.get("MOCK_MODE")
             st.rerun()

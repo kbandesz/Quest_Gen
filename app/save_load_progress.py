@@ -2,7 +2,7 @@
 import json
 import datetime as dt
 import streamlit as st
-from typing import Any
+from typing import Any, Dict
 
 # Alias for convenience
 ss = st.session_state
@@ -37,14 +37,17 @@ DOMAIN_STATE_KEYS = {
     # "questions_sig",
     "include_opts",
     "tool_step",
+    "knowledge_base_step",
     "outliner_step",
     "lo_analysis_step",
     "builder_step",
+    "knowledge_files",
+    "tool_file_selection",
     # "prev_build_inc_opts",
     # "docx_file",
 }
 
-CURRENT_SAVE_VERSION = 1
+CURRENT_SAVE_VERSION = 2
 
 _PERSISTED_KEY_NORMALIZERS = {
     "MOCK_MODE": lambda value: _normalize_bool("MOCK_MODE", value),
@@ -66,9 +69,12 @@ _PERSISTED_KEY_NORMALIZERS = {
     "questions": lambda value: _normalize_dict("questions", value),
     "include_opts": lambda value: _normalize_dict("include_opts", value),
     "tool_step": lambda value: _normalize_str("tool_step", value),
+    "knowledge_base_step": lambda value: _normalize_str("knowledge_base_step", value),
     "outliner_step": lambda value: _normalize_str("outliner_step", value),
     "lo_analysis_step": lambda value: _normalize_str("lo_analysis_step", value),
     "builder_step": lambda value: _normalize_str("builder_step", value),
+    "knowledge_files": lambda value: _normalize_dict("knowledge_files", value),
+    "tool_file_selection": lambda value: _normalize_dict("tool_file_selection", value),
 }
 
 
@@ -125,13 +131,61 @@ def _migrate_saved_payload(version: int, payload: dict) -> dict:
 
     migrated = dict(payload)
     while version < CURRENT_SAVE_VERSION:
-        # Placeholder for future migrations, e.g.:
-        # if version == 1:
-        #     migrated = _migrate_v1_to_v2(migrated)
-        #     version = 2
-        raise ValueError(
-            f"Invalid save file: migration path for version {version} not implemented"
-        )
+        if version == 1:
+            migrated_state = dict(migrated.get("state", {}))
+            migrated_state.setdefault("knowledge_base_step", "Upload")
+
+            knowledge_files = dict(migrated_state.get("knowledge_files") or {})
+            tool_file_selection = dict(migrated_state.get("tool_file_selection") or {})
+
+            def _make_unique_name(base_name: str, existing: Dict[str, dict]) -> str:
+                if base_name not in existing:
+                    return base_name
+                stem, dot, suffix = base_name.rpartition(".")
+                stem = stem if dot else base_name
+                ext = f".{suffix}" if dot else ""
+                idx = 1
+                while f"{stem}_{idx}{ext}" in existing:
+                    idx += 1
+                return f"{stem}_{idx}{ext}"
+
+            def _seed_from_legacy(tool_name: str, text_key: str, tokens_key: str, files_key: str, fallback_name: str) -> None:
+                legacy_text = (migrated_state.get(text_key) or "").strip()
+                if not legacy_text:
+                    return
+
+                legacy_files = [name for name in (migrated_state.get(files_key) or []) if isinstance(name, str) and name.strip()]
+                candidate_name = legacy_files[0] if len(legacy_files) == 1 else fallback_name
+                kb_name = _make_unique_name(candidate_name, knowledge_files)
+                knowledge_files[kb_name] = {
+                    "name": kb_name,
+                    "text": legacy_text,
+                    "tokens": int(migrated_state.get(tokens_key) or 0),
+                    "size": len(legacy_text.encode("utf-8")),
+                    "migrated_from_v1": True,
+                }
+
+                selected = [name for name in (tool_file_selection.get(tool_name) or []) if isinstance(name, str)]
+                if kb_name not in selected:
+                    selected.append(kb_name)
+                tool_file_selection[tool_name] = selected
+
+            _seed_from_legacy("Course Outliner", "course_text", "course_tokens", "course_files", "migrated_course_materials.txt")
+            _seed_from_legacy("Learning Objective Analysis", "lo_material_text", "lo_material_tokens", "lo_material_files", "migrated_lo_materials.txt")
+            _seed_from_legacy("Assessment Builder", "module_text", "module_tokens", "module_files", "migrated_module_materials.txt")
+
+            tool_file_selection.setdefault("Course Outliner", [])
+            tool_file_selection.setdefault("Learning Objective Analysis", [])
+            tool_file_selection.setdefault("Assessment Builder", [])
+
+            migrated_state["knowledge_files"] = knowledge_files
+            migrated_state["tool_file_selection"] = tool_file_selection
+            migrated["state"] = migrated_state
+            migrated["version"] = 2
+            version = 2
+            continue
+
+        raise ValueError(f"Invalid save file: migration path for version {version} not implemented")
 
     return migrated
 
