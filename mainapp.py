@@ -56,8 +56,18 @@ with st.sidebar:
     # --- Settings ---
     st.markdown("### Settings")
 
-    # Toggle mock mode
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
+    # Toggle mock mode (changes are applied only after confirmation)
+    ss.setdefault("mock_mode_toggle", ss.get("MOCK_MODE", True))
+
+    def _handle_mock_mode_toggle():
+        desired_mock_mode = bool(ss.get("mock_mode_toggle"))
+        current_mock_mode = bool(ss.get("MOCK_MODE"))
+        if desired_mock_mode == current_mock_mode:
+            return
+        ss["pending_mock_mode"] = desired_mock_mode
+        reset_session(ss, True)
+
+    st.toggle("Mock mode", key="mock_mode_toggle", on_change=_handle_mock_mode_toggle)
     # Select model
     model_options = ["gpt-4.1", "gpt-5-mini", "gpt-5", "gpt-5.2"]
 
@@ -101,9 +111,6 @@ def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
 
 def _ensure_mock_knowledge_files() -> None:
     """Seed mock knowledge files once per entry into mock mode."""
-    if ss.get("mock_mode_confirmation_pending"):
-        return
-
     if not ss.get("MOCK_MODE"):
         ss.pop("mock_kb_seeded", None)
         return
