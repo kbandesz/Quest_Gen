@@ -2,7 +2,7 @@
 import json
 import datetime as dt
 import streamlit as st
-from typing import Any
+from typing import Any, Dict
 
 # Alias for convenience
 ss = st.session_state
@@ -134,15 +134,52 @@ def _migrate_saved_payload(version: int, payload: dict) -> dict:
         if version == 1:
             migrated_state = dict(migrated.get("state", {}))
             migrated_state.setdefault("knowledge_base_step", "Upload")
-            migrated_state.setdefault("knowledge_files", {})
-            migrated_state.setdefault(
-                "tool_file_selection",
-                {
-                    "Course Outliner": [],
-                    "Learning Objective Analysis": [],
-                    "Assessment Builder": [],
-                },
-            )
+
+            knowledge_files = dict(migrated_state.get("knowledge_files") or {})
+            tool_file_selection = dict(migrated_state.get("tool_file_selection") or {})
+
+            def _make_unique_name(base_name: str, existing: Dict[str, dict]) -> str:
+                if base_name not in existing:
+                    return base_name
+                stem, dot, suffix = base_name.rpartition(".")
+                stem = stem if dot else base_name
+                ext = f".{suffix}" if dot else ""
+                idx = 1
+                while f"{stem}_{idx}{ext}" in existing:
+                    idx += 1
+                return f"{stem}_{idx}{ext}"
+
+            def _seed_from_legacy(tool_name: str, text_key: str, tokens_key: str, files_key: str, fallback_name: str) -> None:
+                legacy_text = (migrated_state.get(text_key) or "").strip()
+                if not legacy_text:
+                    return
+
+                legacy_files = [name for name in (migrated_state.get(files_key) or []) if isinstance(name, str) and name.strip()]
+                candidate_name = legacy_files[0] if len(legacy_files) == 1 else fallback_name
+                kb_name = _make_unique_name(candidate_name, knowledge_files)
+                knowledge_files[kb_name] = {
+                    "name": kb_name,
+                    "text": legacy_text,
+                    "tokens": int(migrated_state.get(tokens_key) or 0),
+                    "size": len(legacy_text.encode("utf-8")),
+                    "migrated_from_v1": True,
+                }
+
+                selected = [name for name in (tool_file_selection.get(tool_name) or []) if isinstance(name, str)]
+                if kb_name not in selected:
+                    selected.append(kb_name)
+                tool_file_selection[tool_name] = selected
+
+            _seed_from_legacy("Course Outliner", "course_text", "course_tokens", "course_files", "migrated_course_materials.txt")
+            _seed_from_legacy("Learning Objective Analysis", "lo_material_text", "lo_material_tokens", "lo_material_files", "migrated_lo_materials.txt")
+            _seed_from_legacy("Assessment Builder", "module_text", "module_tokens", "module_files", "migrated_module_materials.txt")
+
+            tool_file_selection.setdefault("Course Outliner", [])
+            tool_file_selection.setdefault("Learning Objective Analysis", [])
+            tool_file_selection.setdefault("Assessment Builder", [])
+
+            migrated_state["knowledge_files"] = knowledge_files
+            migrated_state["tool_file_selection"] = tool_file_selection
             migrated["state"] = migrated_state
             migrated["version"] = 2
             version = 2

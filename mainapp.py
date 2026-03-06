@@ -834,21 +834,29 @@ def render_knowledge_base_upload():
         disabled=ss["MOCK_MODE"],
     ) or []
 
+    if not files:
+        ss.pop("kb_uploader_sig", None)
+
     if files and not ss["MOCK_MODE"]:
-        with st.spinner("Extracting text. Please wait..."):
-            for uploaded_file in files:
-                try:
-                    text, tokens = _extract_single_uploaded_file(uploaded_file)
-                except Exception as exc:
-                    st.error(exc)
-                    continue
-                ss["knowledge_files"][uploaded_file.name] = {
-                    "name": uploaded_file.name,
-                    "text": text,
-                    "tokens": tokens,
-                    "size": getattr(uploaded_file, "size", 0),
-                }
-        st.success("Knowledge Base updated.")
+        current_upload_sig = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+        if ss.get("kb_uploader_sig") != current_upload_sig:
+            with st.spinner("Extracting text. Please wait..."):
+                for uploaded_file in files:
+                    try:
+                        text, tokens = _extract_single_uploaded_file(uploaded_file)
+                    except Exception as exc:
+                        st.error(exc)
+                        continue
+                    ss["knowledge_files"][uploaded_file.name] = {
+                        "name": uploaded_file.name,
+                        "text": text,
+                        "tokens": tokens,
+                        "size": getattr(uploaded_file, "size", 0),
+                    }
+            ss["kb_uploader_sig"] = current_upload_sig
+            ss["uploader_key"] = ss.get("uploader_key", 0) + 1
+            st.success("Knowledge Base updated.")
+            st.rerun()
 
     if ss.get("knowledge_files"):
         st.markdown("#### Uploaded files")
