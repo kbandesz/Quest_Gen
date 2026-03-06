@@ -101,15 +101,27 @@ def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
 
 def _ensure_mock_knowledge_files() -> None:
     if not ss.get("MOCK_MODE"):
+        ss.pop("mock_kb_dropped", None)
         return
-    mock_files = {
+
+    dropped_mock_files = set(ss.get("mock_kb_dropped") or [])
+    all_mock_files = {
         "mock_uploaded_file_1.txt": _build_mock_kb_entry("mock_uploaded_file_1.txt", "assets/mock_uploaded_file_1.txt"),
         "mock_uploaded_file_2.txt": _build_mock_kb_entry("mock_uploaded_file_2.txt", "assets/mock_uploaded_file_2.txt"),
     }
-    ss["knowledge_files"] = mock_files
+
+    kb_files = dict(ss.get("knowledge_files") or {})
+    for file_name, file_payload in all_mock_files.items():
+        if file_name in dropped_mock_files:
+            kb_files.pop(file_name, None)
+            continue
+        kb_files[file_name] = file_payload
+    ss["knowledge_files"] = kb_files
+
     selection_map = ss.get("tool_file_selection") or {}
+    valid_file_names = set(kb_files.keys())
     for tool_name in ["Course Outliner", "Learning Objective Analysis", "Assessment Builder"]:
-        selected = [name for name in selection_map.get(tool_name, []) if name in mock_files]
+        selected = [name for name in selection_map.get(tool_name, []) if name in valid_file_names]
         selection_map[tool_name] = selected
     ss["tool_file_selection"] = selection_map
 
@@ -142,7 +154,6 @@ def _render_material_selection(tool_name: str, state_prefix: str):
             default=selected_default,
             key=f"kb_selection_{state_prefix}",
             help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
-            width="stretch",
         ) or []
         ss["tool_file_selection"][tool_name] = selected
     else:
@@ -872,6 +883,10 @@ def render_knowledge_base_upload():
                     )
                 else:
                     ss["knowledge_files"].pop(file_name, None)
+                    if ss.get("MOCK_MODE") and file_name.startswith("mock_uploaded_file_"):
+                        dropped = set(ss.get("mock_kb_dropped") or [])
+                        dropped.add(file_name)
+                        ss["mock_kb_dropped"] = sorted(dropped)
                     st.rerun()
     else:
         st.info("No files uploaded yet.")
