@@ -226,9 +226,9 @@ def render_outliner_design():
     )
 
     # --- Generate Outline ---
-    #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-    is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
-    if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
+    is_ready_for_outline = ss["outliner_readiness"]["Outline"]
+    if st.button("Generate Course Outline", type="primary", disabled=not is_ready_for_outline,
+                 help="Select files from the knowledge base for your outline." if not is_ready_for_outline else ""):
         ss["editable_outline"] = False #reset to static view on new generation
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             try:
@@ -309,7 +309,7 @@ def render_lo_analysis_materials():
     with cols[1]:
         st.button("Next: Define and Analyze Objectives →",
                   on_click=lambda: ss.update({"key_lo_analysis_nav": "Objectives"}),
-                  disabled=not ss["lo_analysis_readiness"]["Objectives"])
+                  )
 
 def render_lo_analysis_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
@@ -637,7 +637,7 @@ def render_builder_materials():
     with cols[1]:
         st.button("Next: Generate Questions →",
                   on_click=lambda: ss.update({"key_builder_nav": "Questions"}),
-                  disabled=not ss["builder_readiness"]["Questions"])
+                  )
 
 def render_builder_questions():
     st.header("✍️ Generate Questions")
@@ -664,8 +664,9 @@ def render_builder_questions():
         row_cols[0].markdown(lo_display)
         row_cols[1].number_input("", min_value=0, max_value=5,
                                  key=nq_key, label_visibility="collapsed")
-
-    if st.button("Generate", type="primary", disabled=not can_generate(ss)):
+    is_ready_for_questions = ss["builder_readiness"]["Questions"]
+    if st.button("Generate Questions", type="primary", disabled=not is_ready_for_questions,
+                 help="Select source material and finalize learning objectives for question generation." if not is_ready_for_questions else ""):
         with st.spinner("Generating questions..."):
             ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
@@ -693,8 +694,6 @@ def render_builder_questions():
                     ss.get("module_sig", "")
                 )
             ss["reset_question_counts"] = True
-            # After regeneration, update questions_sig
-            # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
     # Check if there are any questions to display
@@ -763,65 +762,67 @@ def render_builder_questions():
 
 
     # Export to Word
-    st.subheader("", divider="blue")
-    st.header("📄 Export to Word")
-    st.markdown("")
+    has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    if has_questions:
+        st.subheader("", divider="blue")
+        st.header("📄 Export to Word")
+        st.markdown("")
 
-    # Export selection: allow user to choose which metadata blocks to include
-    st.markdown("##### Metadata to be included with questions:")
+        # Export selection: allow user to choose which metadata blocks to include
+        st.markdown("##### Metadata to be included with questions:")
 
-    # Seed checkbox states only once, on widget creation
-    for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
-        key = f"exp_inc_{block}"
-        if key not in ss:
-            ss[key] = ss['include_opts'].get(block, True)
+        # Seed checkbox states only once, on widget creation
+        for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
+            key = f"exp_inc_{block}"
+            if key not in ss:
+                ss[key] = ss['include_opts'].get(block, True)
 
-    cols = st.columns([1,1])
-    with cols[0]:
-        inc_lo = st.checkbox("Learning objectives", key="exp_inc_lo",
-                              help="Include the learning objective before its questions")
-        inc_bloom = st.checkbox("Bloom levels", key="exp_inc_bloom",
-                                help="Show Bloom level for each LO")
-        inc_rationale = st.checkbox("Rationale for Bloom level", key="exp_inc_rationale",
-                                    help="Include rationale explaining the Bloom level")
-    with cols[1]:
-        inc_answer = st.checkbox("Answer", key="exp_inc_answer",
-                                 help="Show the correct answer option")
-        inc_feedback = st.checkbox("Feedback", key="exp_inc_feedback",
-                                   help="Include feedback / rationale for each option")
-        inc_content = st.checkbox("Content reference", key="exp_inc_content",
-                                  help="Include reference to module content for each question")
-    # Persist current selection
-    ss['include_opts'] = {
-        "lo": inc_lo,
-        "bloom": inc_bloom,
-        "answer": inc_answer,
-        "feedback": inc_feedback,
-        "content": inc_content,
-        "rationale": inc_rationale,
-    }
+        cols = st.columns([1,1])
+        with cols[0]:
+            inc_lo = st.checkbox("Learning objectives", key="exp_inc_lo",
+                                help="Include the learning objective before its questions")
+            inc_bloom = st.checkbox("Bloom levels", key="exp_inc_bloom",
+                                    help="Show Bloom level for each LO")
+            inc_rationale = st.checkbox("Rationale for Bloom level", key="exp_inc_rationale",
+                                        help="Include rationale explaining the Bloom level")
+        with cols[1]:
+            inc_answer = st.checkbox("Answer", key="exp_inc_answer",
+                                    help="Show the correct answer option")
+            inc_feedback = st.checkbox("Feedback", key="exp_inc_feedback",
+                                    help="Include feedback / rationale for each option")
+            inc_content = st.checkbox("Content reference", key="exp_inc_content",
+                                    help="Include reference to module content for each question")
+        # Persist current selection
+        ss['include_opts'] = {
+            "lo": inc_lo,
+            "bloom": inc_bloom,
+            "answer": inc_answer,
+            "feedback": inc_feedback,
+            "content": inc_content,
+            "rationale": inc_rationale,
+        }
 
-    # Download button with on-the-fly generation (cached)
-    st.markdown("")
-    questions = ss.get("questions", {})
-    los = ss.get("los", [])
-    include = ss.get("include_opts", {})
+        # Download button with on-the-fly generation (cached)
+        st.markdown("")
+        questions = ss.get("questions", {})
+        los = ss.get("los", [])
+        include = ss.get("include_opts", {})
 
-    doc_ready = bool(los) and bool(questions)
+        doc_ready = bool(los) and bool(questions)
 
-    st.download_button(
-        "Download",
-        data=lambda: build_questions_docx_cached(
-            los,
-            questions,
-            include,
-        ),
-        file_name="assessment_questions.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        disabled=not doc_ready,
-        help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
-        type="primary" if doc_ready else "secondary"
-    )
+        st.download_button(
+            "Download",
+            data=lambda: build_questions_docx_cached(
+                los,
+                questions,
+                include,
+            ),
+            file_name="assessment_questions.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            disabled=not doc_ready,
+            help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
+            type="primary" if doc_ready else "secondary"
+        )
 
     # --- Navigation ---
     st.divider()
@@ -878,7 +879,7 @@ def render_knowledge_base_upload():
             row_cols = st.columns([6, 2, 1], vertical_alignment="center")
             row_cols[0].markdown(f"**{file_name}**")
             row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
-            if row_cols[2].button("Drop", key=f"drop_kb_{file_name}"):
+            if row_cols[2].button("🗑️", key=f"drop_kb_{file_name}", help="Drop file from knowledge base"):
                 selected_in = [
                     tool_name
                     for tool_name, selected_files in (ss.get("tool_file_selection") or {}).items()

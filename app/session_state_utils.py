@@ -58,7 +58,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
 
     ss.setdefault("outliner_readiness", {
         "Materials": True,
-        "Outline": True,
+        "Outline": False,
     })
     ss.setdefault("builder_readiness", {
         "Materials": True,
@@ -118,7 +118,12 @@ def compute_step_readiness(ss: SessionStateProxy) -> None:
     """Compute readiness for outliner and module-builder navigation."""
     outliner_readiness = {
         "Materials": True,
-        "Outline": True,
+        "Outline": bool(ss.get("course_text")),#True,
+    }
+    
+    lo_analysis_readiness = {
+        "Materials": True,
+        "Objectives": bool(ss.get("lo_material_text")),
     }
 
     los = ss.get("los", [])
@@ -126,14 +131,11 @@ def compute_step_readiness(ss: SessionStateProxy) -> None:
         "Materials": True,
         "Questions": bool(ss.get("module_text")) and bool(los) and all(lo.get("final_text") for lo in los),
     }
-    lo_analysis_readiness = {
-        "Materials": True,
-        "Objectives": bool(ss.get("lo_material_text")),
-    }
 
     ss["outliner_readiness"] = outliner_readiness
-    ss["builder_readiness"] = builder_readiness
     ss["lo_analysis_readiness"] = lo_analysis_readiness
+    ss["builder_readiness"] = builder_readiness
+
 
 ####### Session state manipulation helpers ########
 
