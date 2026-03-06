@@ -101,6 +101,9 @@ def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
 
 def _ensure_mock_knowledge_files() -> None:
     """Seed mock knowledge files once per entry into mock mode."""
+    if ss.get("mock_mode_confirmation_pending"):
+        return
+
     if not ss.get("MOCK_MODE"):
         ss.pop("mock_kb_seeded", None)
         return

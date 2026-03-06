@@ -54,6 +54,7 @@ def init_session_state(ss: SessionStateProxy) -> None:
     # ss.setdefault("outline_doc_sig", None)
 
     ss.setdefault("MOCK_MODE", True)
+    ss.setdefault("mock_mode_confirmation_pending", False)
     ss.setdefault("OPENAI_MODEL", "gpt-4.1")
 
     ss.setdefault("outliner_readiness", {
@@ -264,6 +265,9 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
         ss: The Streamlit session state proxy.
         mock_mode_change: Whether this reset is triggered by a change in mock mode setting.
     """
+    if mock_mode_change:
+        ss["mock_mode_confirmation_pending"] = True
+
     st.write("This will will clear everything. Are you sure you want to proceed?")
     col1, col2 = st.columns(2)
     with col1:
@@ -275,9 +279,11 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
             ss["uploader_key"] = next_uploader_key
             if mock_mode_change:
                 ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+                ss["mock_mode_confirmation_pending"] = False
             st.rerun() # Rerun to dismiss the dialog and update the app state
     with col2:
         if st.button("Cancel"):
             if mock_mode_change:
                 ss["MOCK_MODE"] = not ss["MOCK_MODE"] # revert the toggle if cancelled
+                ss["mock_mode_confirmation_pending"] = False
             st.rerun()
