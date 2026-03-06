@@ -133,17 +133,20 @@ def _render_material_selection(tool_name: str, state_prefix: str):
     kb_files = ss.get("knowledge_files") or {}
     options = list(kb_files.keys())
     selected_default = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
-    selected = st.multiselect(
-        "Select materials from Knowledge Base",
-        options=options,
-        default=selected_default,
-        key=f"kb_selection_{state_prefix}",
-        disabled=False,
-        help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
-    )
-    ss["tool_file_selection"][tool_name] = selected
 
-    if not options:
+    if options:
+        selected = st.pills(
+            "Select materials from Knowledge Base",
+            options=options,
+            selection_mode="multi",
+            default=selected_default,
+            key=f"kb_selection_{state_prefix}",
+            help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
+            width="stretch",
+        ) or []
+        ss["tool_file_selection"][tool_name] = selected
+    else:
+        ss["tool_file_selection"][tool_name] = []
         st.info("No files available. Go to **Knowledge Base → Upload** to add source materials.")
 
 
@@ -172,9 +175,6 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
 
     if ss["course_files"]:
-        st.caption("Selected files from Knowledge Base:")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-        st.markdown(current_files)
         with st.expander(":small[:grey[View extracted text]]", expanded=False):
             st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
@@ -279,9 +279,6 @@ def render_lo_analysis_materials():
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
     if ss["lo_material_files"]:
-        st.caption("Selected files from Knowledge Base:")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["lo_material_files"])])
-        st.markdown(current_files)
         with st.expander("View extracted text", expanded=False):
             st.caption(f"Estimated tokens: {ss.get('lo_material_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
@@ -610,9 +607,6 @@ def render_builder_materials():
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
     if ss["module_files"]:
-        st.caption("Selected files from Knowledge Base:")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
-        st.markdown(current_files)
         with st.expander("View extracted text", expanded=False):
             st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
