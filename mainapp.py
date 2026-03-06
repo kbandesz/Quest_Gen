@@ -86,12 +86,33 @@ def _extract_single_uploaded_file(uploaded_file) -> Tuple[str, int]:
 
 
 
-def _mock_material_payload() -> Tuple[List[str], str, int]:
-    mock_path = "assets/mock_uploaded_file.txt"
-    with open(mock_path, "r", encoding="utf-8") as handle:
-        mock_text = handle.read().strip()
-    wrapped = f"<mock_uploaded_file.txt>\n\n{mock_text}\n\n</mock_uploaded_file.txt>"
-    return ["mock_uploaded_file.txt"], wrapped, len(wrapped.split())
+
+def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
+    with open(file_path, "r", encoding="utf-8") as handle:
+        content = handle.read().strip()
+    wrapped = f"<{file_name}>\n\n{content}\n\n</{file_name}>"
+    return {
+        "name": file_name,
+        "text": wrapped,
+        "tokens": len(wrapped.split()),
+        "size": len(content.encode("utf-8")),
+    }
+
+
+def _ensure_mock_knowledge_files() -> None:
+    if not ss.get("MOCK_MODE"):
+        return
+    mock_files = {
+        "mock_uploaded_file_1.txt": _build_mock_kb_entry("mock_uploaded_file_1.txt", "assets/mock_uploaded_file_1.txt"),
+        "mock_uploaded_file_2.txt": _build_mock_kb_entry("mock_uploaded_file_2.txt", "assets/mock_uploaded_file_2.txt"),
+    }
+    ss["knowledge_files"] = mock_files
+    selection_map = ss.get("tool_file_selection") or {}
+    for tool_name in ["Course Outliner", "Learning Objective Analysis", "Assessment Builder"]:
+        selected = [name for name in selection_map.get(tool_name, []) if name in mock_files]
+        selection_map[tool_name] = selected
+    ss["tool_file_selection"] = selection_map
+
 def _selected_kb_payload(tool_name: str) -> Tuple[List[str], str, int]:
     selected = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
     kb_files = ss.get("knowledge_files") or {}
@@ -117,7 +138,7 @@ def _render_material_selection(tool_name: str, state_prefix: str):
         options=options,
         default=selected_default,
         key=f"kb_selection_{state_prefix}",
-        disabled=ss["MOCK_MODE"],
+        disabled=False,
         help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
     )
     ss["tool_file_selection"][tool_name] = selected
@@ -141,10 +162,7 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
     st.markdown("The **Course Outliner** tool uses files from the Knowledge Base. Select relevant materials below to help AI generate a stronger outline.")
     _render_material_selection("Course Outliner", "course")
 
-    if ss["MOCK_MODE"]:
-        selected_files, text, tokens = _mock_material_payload()
-    else:
-        selected_files, text, tokens = _selected_kb_payload("Course Outliner")
+    selected_files, text, tokens = _selected_kb_payload("Course Outliner")
 
     ss["course_files"] = selected_files
     ss["course_text"] = text
@@ -250,10 +268,7 @@ def render_lo_analysis_materials():
 
     _render_material_selection("Learning Objective Analysis", "lo")
 
-    if ss["MOCK_MODE"]:
-        selected_files, text, tokens = _mock_material_payload()
-    else:
-        selected_files, text, tokens = _selected_kb_payload("Learning Objective Analysis")
+    selected_files, text, tokens = _selected_kb_payload("Learning Objective Analysis")
 
     prev_lo_material_text = ss.get("lo_material_text", "")
     apply_lo_material_content(ss, text, tokens, selected_files)
@@ -584,10 +599,7 @@ def render_builder_materials():
 
     _render_material_selection("Assessment Builder", "builder")
 
-    if ss["MOCK_MODE"]:
-        selected_files, text, tokens = _mock_material_payload()
-    else:
-        selected_files, text, tokens = _selected_kb_payload("Assessment Builder")
+    selected_files, text, tokens = _selected_kb_payload("Assessment Builder")
 
     prev_module_text = ss.get("module_text", "")
     apply_module_content(ss, text, tokens, selected_files)
@@ -809,6 +821,10 @@ def render_knowledge_base_upload():
     st.markdown("Upload source files once, then select them in each tool's Materials step.")
     st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
 
+    if ss["MOCK_MODE"]:
+        _ensure_mock_knowledge_files()
+        st.info("Mock mode is enabled: the Knowledge Base uploader is disabled and preloaded with two mock files.")
+
     files = st.file_uploader(
         "Upload knowledge files",
         help="Supported formats: pdf, docx, pptx, txt",
@@ -818,7 +834,7 @@ def render_knowledge_base_upload():
         disabled=ss["MOCK_MODE"],
     ) or []
 
-    if files:
+    if files and not ss["MOCK_MODE"]:
         with st.spinner("Extracting text. Please wait..."):
             for uploaded_file in files:
                 try:
@@ -962,6 +978,8 @@ def render_assessment_builder():
         render_builder_questions()
 
 # Level-1 navigation between top components
+if ss.get("MOCK_MODE"):
+    _ensure_mock_knowledge_files()
 compute_step_readiness(ss)
 render_tool_picker()
 if ss["tool_step"] == "Knowledge Base":
