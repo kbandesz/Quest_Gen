@@ -100,30 +100,29 @@ def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
 
 
 def _ensure_mock_knowledge_files() -> None:
+    """Seed mock knowledge files once per entry into mock mode."""
     if not ss.get("MOCK_MODE"):
-        ss.pop("mock_kb_dropped", None)
+        ss.pop("mock_kb_seeded", None)
         return
 
-    dropped_mock_files = set(ss.get("mock_kb_dropped") or [])
-    all_mock_files = {
+    if ss.get("mock_kb_seeded"):
+        return
+
+    ss["knowledge_files"] = {
         "mock_uploaded_file_1.txt": _build_mock_kb_entry("mock_uploaded_file_1.txt", "assets/mock_uploaded_file_1.txt"),
         "mock_uploaded_file_2.txt": _build_mock_kb_entry("mock_uploaded_file_2.txt", "assets/mock_uploaded_file_2.txt"),
     }
 
-    kb_files = dict(ss.get("knowledge_files") or {})
-    for file_name, file_payload in all_mock_files.items():
-        if file_name in dropped_mock_files:
-            kb_files.pop(file_name, None)
-            continue
-        kb_files[file_name] = file_payload
-    ss["knowledge_files"] = kb_files
+    ss["tool_file_selection"] = {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    }
 
-    selection_map = ss.get("tool_file_selection") or {}
-    valid_file_names = set(kb_files.keys())
-    for tool_name in ["Course Outliner", "Learning Objective Analysis", "Assessment Builder"]:
-        selected = [name for name in selection_map.get(tool_name, []) if name in valid_file_names]
-        selection_map[tool_name] = selected
-    ss["tool_file_selection"] = selection_map
+    for widget_key in ["kb_selection_course", "kb_selection_lo", "kb_selection_builder"]:
+        ss.pop(widget_key, None)
+
+    ss["mock_kb_seeded"] = True
 
 def _selected_kb_payload(tool_name: str) -> Tuple[List[str], str, int]:
     selected = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
@@ -827,7 +826,6 @@ def render_knowledge_base_upload():
     st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
 
     if ss["MOCK_MODE"]:
-        _ensure_mock_knowledge_files()
         st.info("Mock mode is enabled: the Knowledge Base uploader is disabled and preloaded with two mock files.")
 
     files = st.file_uploader(
@@ -883,10 +881,6 @@ def render_knowledge_base_upload():
                     )
                 else:
                     ss["knowledge_files"].pop(file_name, None)
-                    if ss.get("MOCK_MODE") and file_name.startswith("mock_uploaded_file_"):
-                        dropped = set(ss.get("mock_kb_dropped") or [])
-                        dropped.add(file_name)
-                        ss["mock_kb_dropped"] = sorted(dropped)
                     st.rerun()
     else:
         st.info("No files uploaded yet.")
@@ -995,8 +989,7 @@ def render_assessment_builder():
         render_builder_questions()
 
 # Level-1 navigation between top components
-if ss.get("MOCK_MODE"):
-    _ensure_mock_knowledge_files()
+_ensure_mock_knowledge_files()
 compute_step_readiness(ss)
 render_tool_picker()
 if ss["tool_step"] == "Knowledge Base":
