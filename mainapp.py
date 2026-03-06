@@ -713,7 +713,7 @@ def render_builder_questions():
     )
     # Go over all LOs, each in a container
     for lo in ss["los"]:
-        qs = ss["questions"].get(lo["id"], [])
+        qs = ss["questions"].setdefault(lo["id"], [])
         # if not qs:
         #     continue
         with st.container(border=True):
