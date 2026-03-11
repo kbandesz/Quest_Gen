@@ -46,7 +46,7 @@ init_session_state(ss)
 # Title and warning based on current mock setting
 mock_warning = ":red[MOCK MODE]"
 st.title(f":rainbow[BEACON-Design] {mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown(f"##### _Smarter course design—powered by AI._")
+st.markdown("##### _Smarter course design—powered by AI._")
 
 ################################################
 # Sidebar for settings & save/load
@@ -240,8 +240,8 @@ def render_knowledge_base_upload():
                     st.rerun()
 
         footer_cols = st.columns([6, 2, 1], vertical_alignment="center")
-        footer_cols[0].markdown("**TOTAL**")
-        footer_cols[1].markdown(f"**{total_tokens:,}**")
+        footer_cols[0].markdown(":blue[**TOTAL**]")
+        footer_cols[1].markdown(f":blue[**{total_tokens:,}**]")
     else:
         st.info("No files uploaded yet.")
 
