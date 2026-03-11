@@ -12,7 +12,11 @@ import streamlit as st
 def init_session_state(ss: SessionStateProxy) -> None:
     """Seed all expected session state keys with defaults."""
 
-    ss.setdefault("current_step", 1)
+    ss.setdefault("tool_step", "Knowledge Base")
+    ss.setdefault("knowledge_base_step", "Upload")
+    ss.setdefault("outliner_step", "Materials")
+    ss.setdefault("lo_analysis_step", "Materials")
+    ss.setdefault("builder_step", "Materials")
     ss.setdefault("uploader_key", 0)  # to force reset of uploader widget
 
     ss.setdefault("course_files", [])
@@ -24,6 +28,17 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("module_text", "")
     ss.setdefault("module_tokens", 0)
     ss.setdefault("module_sig", "")
+
+    ss.setdefault("lo_material_files", [])
+    ss.setdefault("lo_material_text", "")
+    ss.setdefault("lo_material_tokens", 0)
+    ss.setdefault("lo_material_sig", "")
+    ss.setdefault("knowledge_files", {})
+    ss.setdefault("tool_file_selection", {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    })
 
     ss.setdefault("los", [])
     ss.setdefault("questions", {})
@@ -41,7 +56,18 @@ def init_session_state(ss: SessionStateProxy) -> None:
     ss.setdefault("MOCK_MODE", True)
     ss.setdefault("OPENAI_MODEL", "gpt-4.1")
 
-    ss.setdefault("is_ready_for_step", [True]*3 + [False]*3)  # Track readiness for each step
+    ss.setdefault("outliner_readiness", {
+        "Materials": True,
+        "Outline": False,
+    })
+    ss.setdefault("builder_readiness", {
+        "Materials": True,
+        "Questions": False,
+    })
+    ss.setdefault("lo_analysis_readiness", {
+        "Materials": True,
+        "Objectives": False,
+    })
 
 ######## Signature computation helpers ########
 
@@ -89,29 +115,27 @@ def sig_questions(questions: Dict[str, Iterable[Dict[str, Any]]]) -> str:
 
 ####### Navigation helpers ########
 def compute_step_readiness(ss: SessionStateProxy) -> None:
-    """Compute baseline readiness for each step from session state before rendering the stepper.
-    This ensures the top stepper reflects current state even though it's rendered before step content.
-    """
-    # Ensure list shape (index 0 unused; steps 1..5 use indices 1..5)
-    if "is_ready_for_step" not in ss or not isinstance(ss["is_ready_for_step"], list) or len(ss["is_ready_for_step"]) < 6:
-        ss["is_ready_for_step"] = [True]*3 + [False]*3
+    """Compute readiness for outliner and module-builder navigation."""
+    outliner_readiness = {
+        "Materials": True,
+        "Outline": bool(ss.get("course_text")),#True,
+    }
+    
+    lo_analysis_readiness = {
+        "Materials": True,
+        "Objectives": bool(ss.get("lo_material_text")),
+    }
 
-    # Step 1 is always reachable
-    ss["is_ready_for_step"][1] = True
-
-    # Step 2: always reachable (Step 1 can be skipped entirely)
-    ss["is_ready_for_step"][2] = True
-    #ss["is_ready_for_step"][2] = bool(ss.get("outline")) or bool(ss.get("course_text"))
-
-    # Step 3: ready if module text has been provided (upload or import)
-    ss["is_ready_for_step"][3] = bool(ss.get("module_text"))
-
-    # Step 4: ready if there are learning objectives and all have been accepted/finalized
     los = ss.get("los", [])
-    ss["is_ready_for_step"][4] = bool(los) and all(lo.get("final_text") for lo in los)
+    builder_readiness = {
+        "Materials": True,
+        "Questions": bool(ss.get("module_text")) and bool(los) and all(lo.get("final_text") for lo in los),
+    }
 
-    # Step 5: ready if questions exist
-    ss["is_ready_for_step"][5] = bool(ss.get("questions"))
+    ss["outliner_readiness"] = outliner_readiness
+    ss["lo_analysis_readiness"] = lo_analysis_readiness
+    ss["builder_readiness"] = builder_readiness
+
 
 ####### Session state manipulation helpers ########
 
@@ -181,8 +205,10 @@ def apply_module_content(ss: SessionStateProxy, text: Optional[str], tokens: Opt
     current_sig = ss.get("module_sig")
 
     if current_sig and new_mod_sig != current_sig:
-        st.toast("Module content changed — LOs and questions cleared.")
-        clear_module_dependent_outputs(ss)
+        st.toast("Module content changed — generated questions cleared.")
+        for lo in ss.get("los", []) or []:
+            lo["generation_sig"] = None
+        clear_questions(ss)
 
     ss["module_files"] = file_names
     ss["module_text"] = text
@@ -190,10 +216,31 @@ def apply_module_content(ss: SessionStateProxy, text: Optional[str], tokens: Opt
     ss["module_sig"] = new_mod_sig
 
 
+def apply_lo_material_content(ss: SessionStateProxy, text: Optional[str], tokens: Optional[int], file_names: Optional[List[str]]) -> None:
+    """Update session state with LO analysis material and clear alignment outputs if needed."""
+    text = text or ""
+    tokens = tokens or 0
+    file_names = file_names or []
+
+    new_material_sig = sig_module(text)
+    current_sig = ss.get("lo_material_sig")
+
+    if current_sig and new_material_sig != current_sig:
+        st.toast("LO analysis material changed — alignment checks cleared.")
+        for lo in ss.get("los", []) or []:
+            clear_alignment(ss, lo)
+
+    ss["lo_material_files"] = file_names
+    ss["lo_material_text"] = text
+    ss["lo_material_tokens"] = tokens
+    ss["lo_material_sig"] = new_material_sig
+
+
 def reset_uploaded_content(ss: SessionStateProxy) -> None:
     """Remove uploaded module data and reset uploader widget."""
     ss["course_files"] = []
     ss["module_files"] = []
+    ss["lo_material_files"] = []
     ss["outline_guidance"] = ""
     ss.pop("outline_guidance_key", None)
     ss["course_text"] = ""
@@ -201,6 +248,15 @@ def reset_uploaded_content(ss: SessionStateProxy) -> None:
     ss["module_text"] = ""
     ss["module_tokens"] = 0
     ss["module_sig"] = ""
+    ss["lo_material_text"] = ""
+    ss["lo_material_tokens"] = 0
+    ss["lo_material_sig"] = ""
+    ss["knowledge_files"] = {}
+    ss["tool_file_selection"] = {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    }
     ss["uploader_key"] = ss.get("uploader_key", 0) + 1
 
 @st.dialog("Confirm Action", dismissible=False, width="small")
@@ -215,15 +271,17 @@ def reset_session(ss: SessionStateProxy, mock_mode_change: bool = False) -> None
     with col1:
         if st.button("Confirm"):
             # Clear everything and go back to Step 1
-            current_mock_mode = ss.get("MOCK_MODE")
+            pending_mock_mode = ss.get("pending_mock_mode", ss.get("MOCK_MODE"))
             next_uploader_key = ss.get("uploader_key", 0) + 1
             ss.clear()
             ss["uploader_key"] = next_uploader_key
             if mock_mode_change:
-                ss["MOCK_MODE"] = current_mock_mode # preserve the new mock mode setting
+                ss["MOCK_MODE"] = bool(pending_mock_mode)
+                ss["mock_mode_toggle"] = bool(pending_mock_mode)
             st.rerun() # Rerun to dismiss the dialog and update the app state
     with col2:
         if st.button("Cancel"):
             if mock_mode_change:
-                ss["MOCK_MODE"] = not ss["MOCK_MODE"] # revert the toggle if cancelled
+                ss.pop("pending_mock_mode", None)
+                ss["mock_mode_toggle"] = ss.get("MOCK_MODE")
             st.rerun()

@@ -1,10 +1,10 @@
 """Main UI logic of the BEACON-Design app."""
 import streamlit as st
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 from app.parse_input_files import extract_text_and_tokens
-from app.generate_llm_output import generate_outline, check_alignment, generate_questions
+from app.generate_llm_output import generate_outline, check_alignment, generate_questions, show_api_error
 from app.export_docx import build_outline_docx_cached, build_questions_docx_cached
 from app.display_outline import display_editable_outline, display_static_outline
 from app.display_questions import (
@@ -20,15 +20,12 @@ from app.session_state_utils import (
     init_session_state,
     sig_alignment,
     sig_question_gen,
-    #sig_outline,
-    sig_questions,
     compute_step_readiness,
     clear_outline_widget_state,
     clear_alignment,
     clear_questions,
-    #clear_module_dependent_outputs,
     apply_module_content,
-    #reset_uploaded_content,
+    apply_lo_material_content,
     reset_session,
 )
 
@@ -45,29 +42,32 @@ apply_pending_restore()
 ss = st.session_state
 init_session_state(ss)
 
-
-def show_api_error(error: Exception) -> None:
-    """Render API failures with full debug details in an expandable area."""
-    st.error("API call failed. See debug details for the full return message.")
-    with st.expander("Debug details", expanded=False):
-        st.code(str(error), language="text")
-
 ################################################
 # Title and warning based on current mock setting
-mock_warning = "   :red[⚠️ MOCK MODE is ON]"
-st.title(f"🌟📐 BEACON - Design{mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown("##### _Smarter course design—powered by AI._")
+mock_warning = ":red[MOCK MODE]"
+st.title(f":rainbow[BEACON-Design] {mock_warning if ss['MOCK_MODE'] else ''}")
+st.markdown(f"##### _Smarter course design—powered by AI._")
 
 ################################################
-# Sidebar for settings
+# Sidebar for settings & save/load
 ################################################
 with st.sidebar:
 
     # --- Settings ---
     st.markdown("### Settings")
 
-    # Toggle mock mode
-    st.toggle("Mock mode", key="MOCK_MODE", on_change=reset_session, args=(ss, True))
+    # Toggle mock mode (changes are applied only after confirmation)
+    ss.setdefault("mock_mode_toggle", ss.get("MOCK_MODE", True))
+
+    def _handle_mock_mode_toggle():
+        desired_mock_mode = bool(ss.get("mock_mode_toggle"))
+        current_mock_mode = bool(ss.get("MOCK_MODE"))
+        if desired_mock_mode == current_mock_mode:
+            return
+        ss["pending_mock_mode"] = desired_mock_mode
+        reset_session(ss, True)
+
+    st.toggle("Mock mode", key="mock_mode_toggle", on_change=_handle_mock_mode_toggle)
     # Select model
     model_options = ["gpt-4.1", "gpt-5-mini", "gpt-5", "gpt-5.2"]
 
@@ -81,7 +81,7 @@ with st.sidebar:
     st.selectbox("OpenAI model", model_options, key="OPENAI_MODEL",
                  disabled=ss["MOCK_MODE"])
 
-    # Save/load progress ---
+    # Save/load session ---
     save_load_panel()
 
     # Reset button to start over with clean slate
@@ -90,131 +90,209 @@ with st.sidebar:
 
 
 ################################################
-# Visual Stepper
+# Knowledge Base
 ################################################
-def render_stepper():
-    st.write("")
+# Helpers for managing file uploads and selections across the app
+def _extract_single_uploaded_file(uploaded_file) -> Tuple[str, int]:
+    file_key = ((uploaded_file.name, getattr(uploaded_file, "size", None), getattr(uploaded_file, "last_modified", None)),)
+    return extract_text_and_tokens([uploaded_file], file_keys=file_key)
+
+def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
+    with open(file_path, "r", encoding="utf-8") as handle:
+        content = handle.read().strip()
+    wrapped = f"<{file_name}>\n\n{content}\n\n</{file_name}>"
+    return {
+        "name": file_name,
+        "text": wrapped,
+        "tokens": len(wrapped.split()),
+        "size": len(content.encode("utf-8")),
+    }
+
+def _ensure_mock_knowledge_files() -> None:
+    """Seed mock knowledge files once per entry into mock mode."""
+    if not ss.get("MOCK_MODE"):
+        ss.pop("mock_kb_seeded", None)
+        return
+
+    if ss.get("mock_kb_seeded"):
+        return
+
+    ss["knowledge_files"] = {
+        "mock_uploaded_file_1.txt": _build_mock_kb_entry("mock_uploaded_file_1.txt", "assets/mock_uploaded_file_1.txt"),
+        "mock_uploaded_file_2.txt": _build_mock_kb_entry("mock_uploaded_file_2.txt", "assets/mock_uploaded_file_2.txt"),
+    }
+
+    ss["tool_file_selection"] = {
+        "Course Outliner": [],
+        "Learning Objective Analysis": [],
+        "Assessment Builder": [],
+    }
+
+    for widget_key in ["kb_selection_course", "kb_selection_lo", "kb_selection_builder"]:
+        ss.pop(widget_key, None)
+
+    ss["mock_kb_seeded"] = True
+
+def _selected_kb_payload(tool_name: str) -> Tuple[List[str], str, int]:
+    selected = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
+    kb_files = ss.get("knowledge_files") or {}
+    valid_selection = [name for name in selected if name in kb_files]
+    if valid_selection != selected:
+        ss["tool_file_selection"][tool_name] = valid_selection
+
+    texts: List[str] = []
+    tokens = 0
+    for file_name in valid_selection:
+        file_payload = kb_files.get(file_name, {})
+        texts.append(file_payload.get("text", ""))
+        tokens += int(file_payload.get("tokens", 0) or 0)
+    return valid_selection, "\n\n----- FILE BREAK -----\n\n".join([chunk for chunk in texts if chunk]), tokens
 
 
-    outline = "Plan your course structure"
-    upload = "Add your module files"
-    LOs = "Define and analyze learning objectives"
-    quest_gen = "Create questions with AI support"
-    export = "Export questions to Microsoft Word"
-    
-    steps = [outline, upload, LOs, quest_gen, export]
+def _render_material_selection(tool_name: str, state_prefix: str):
+    kb_files = ss.get("knowledge_files") or {}
+    options = list(kb_files.keys())
+    selected_default = list((ss.get("tool_file_selection") or {}).get(tool_name, []))
 
-    # Short button labels (clickable)
-    step_labels = [
-        "📚 1. Outline",
-        "📂 2a. Module ->",
-        "🎯 2b. Objectives ->",
-        "✍️ 2c. Questions ->",
-        "📄 2d. Final Output",
-    ]
+    if options:
+        selected = st.pills(
+            "Select materials from Knowledge Base",
+            options=options,
+            selection_mode="multi",
+            default=selected_default,
+            key=f"kb_selection_{state_prefix}",
+            help="Go to Knowledge Base to upload files. Re-uploading a file with the same name replaces the previous one.",
+        ) or []
+        ss["tool_file_selection"][tool_name] = selected
+    else:
+        ss["tool_file_selection"][tool_name] = []
+        st.info("No files available. Go to **Knowledge Base → Upload** to add source materials.")
 
-    # wrap the whole stepper in a bordered "card"
-    with st.container(border=True):
-        # slightly larger gaps between steps
-        cols = st.columns(len(steps), gap="medium")
-        for i, (col, step_name) in enumerate(zip(cols, steps)):
-            with col:
-                # Clickable button to navigate directly to the step
-                #red, orange, yellow, green, blue, violet, gray/grey, rainbow,
-                if st.button(f"**{step_labels[i]}**", type="tertiary",
-                             disabled=not ss["is_ready_for_step"][i+1], key=f"step_btn_{i+1}"):
-                    ss["current_step"] = i + 1
-                    st.rerun()
-                # Description + Visual indication of current/completed/upcoming steps
-                if i + 1 == ss["current_step"]:
-                    # active step: prominent info callout
-                    st.info(step_name)
-                elif i + 1 < ss["current_step"]:
-                    # completed step: success callout
-                    st.success(step_name)
+# Knowledge Base Upload UI
+def render_knowledge_base_upload():
+    st.header("🗂️ Knowledge Base")
+    st.markdown("Upload source files once, then select them in each tool's Materials step.")
+    st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
+
+    if ss["MOCK_MODE"]:
+        st.info("Mock mode is enabled: the Knowledge Base uploader is disabled and preloaded with two mock files.")
+
+    files = st.file_uploader(
+        "Upload knowledge files",
+        help="Supported formats: pdf, docx, pptx, txt",
+        type=["pdf", "docx", "pptx", "txt"],
+        accept_multiple_files=True,
+        key=f"kb_file_uploader_{ss['uploader_key']}",
+        disabled=ss["MOCK_MODE"],
+    ) or []
+
+    if not files:
+        ss.pop("kb_uploader_sig", None)
+
+    if files and not ss["MOCK_MODE"]:
+        current_upload_sig = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+        if ss.get("kb_uploader_sig") != current_upload_sig:
+            with st.spinner("Extracting text. Please wait..."):
+                for uploaded_file in files:
+                    try:
+                        text, tokens = _extract_single_uploaded_file(uploaded_file)
+                    except Exception as exc:
+                        st.error(exc)
+                        continue
+                    ss["knowledge_files"][uploaded_file.name] = {
+                        "name": uploaded_file.name,
+                        "text": text,
+                        "tokens": tokens,
+                        "size": getattr(uploaded_file, "size", 0),
+                    }
+            ss["kb_uploader_sig"] = current_upload_sig
+            ss["uploader_key"] = ss.get("uploader_key", 0) + 1
+            st.success("Knowledge Base updated.")
+            st.rerun()
+
+    if ss.get("knowledge_files"):
+        st.markdown("#### Uploaded files")
+        for file_name in list(ss["knowledge_files"].keys()):
+            payload = ss["knowledge_files"][file_name]
+            row_cols = st.columns([6, 2, 1], vertical_alignment="center")
+            row_cols[0].markdown(f"**{file_name}**")
+            row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
+            if row_cols[2].button("🗑️", key=f"drop_kb_{file_name}", help="Drop file from knowledge base"):
+                selected_in = [
+                    tool_name
+                    for tool_name, selected_files in (ss.get("tool_file_selection") or {}).items()
+                    if file_name in (selected_files or [])
+                ]
+                if selected_in:
+                    st.warning(
+                        f"Cannot drop '{file_name}' because it is selected in: {', '.join(selected_in)}. "
+                        "Please unselect it in those tools first."
+                    )
                 else:
-                    # upcoming step: subtle border box (not plain text)
-                    #with st.container(border=True):
-                    st.markdown(f":grey[{step_name}]")
+                    ss["knowledge_files"].pop(file_name, None)
+                    st.rerun()
+    else:
+        st.info("No files uploaded yet.")
 
 ################################################
-# 1 Course Outline
+# Course Outliner
 ################################################
-def render_step_1():
+def render_outliner_materials():
     st.header("📚 Course Outline")
     st.markdown("""⚠️ Before drafting any learning content, it is essential to first create a clear and detailed course outline.
 
 A course outline acts as a blueprint for the course, ensuring a goal-oriented, logical, and structured learning experience for participants. Once finalized, it helps streamline the entire course development process.
 """)
-    with st.expander("**Structure of an IMF course**", expanded=False):
+    with st.expander("**Structure of an IMF course**", expanded=True):
         st.markdown(const.COURSE_STRUCTURE_GUIDANCE)
-    
-    st.markdown("The first step (1. Outline) of this application offers AI-powered support to generate a course outline using any source materials you upload. The more relevant the materials, the better the AI can assist you in structuring your course effectively.")
-    # --- User Inputs ---
-    files = st.file_uploader(
-        "**Upload Source Materials (e.g., papers, presentations, notes)**",
-        help="Upload any source materials that will help the AI understand the course context and content.",
-        type=["pdf","docx","pptx","txt"],
-        accept_multiple_files=True,
-        key=f"source_file_uploader_{ss["uploader_key"]}",
-        disabled=ss["MOCK_MODE"]
-        ) or []
-    
-    # In mock mode, override with the mock file
-    if ss["MOCK_MODE"]:
-        files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
 
-    # Compute a stable signature for the current files (for cache keying)
-    current_file_keys = tuple((f.name, f.size, getattr(f, "last_modified", None)) for f in files)
+    st.markdown("The **Course Outliner** tool uses files from the Knowledge Base. Select relevant materials below to help AI generate a stronger outline.")
+    _render_material_selection("Course Outliner", "course")
 
-    # Process files
-    if files:
-        with st.spinner("Extracting text. Please wait..."):
-            try:
-                text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
-            except Exception as e:
-                st.error(e)
-                text, tokens = "", 0
+    selected_files, text, tokens = _selected_kb_payload("Course Outliner")
 
-        ss["course_files"] = [f.name for f in files]
-        ss["course_text"] = text
-        ss["course_tokens"] = tokens
+    ss["course_files"] = selected_files
+    ss["course_text"] = text
+    ss["course_tokens"] = tokens
 
-        if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
-            st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
-    
+    if ss["course_tokens"] > const.MODULE_TOKEN_LIMIT:
+        st.error(f"Souce material exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. You can still try, but be prepared for hitting API limits.")
+
     if ss["course_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-        st.markdown(current_files)
         with st.expander(":small[:grey[View extracted text]]", expanded=False):
-            # Display currently uploaded files
-            #if ss["course_files"]:
-            # st.caption("Currently uploaded files (To change, use file picker above):")
-            # current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["course_files"])])
-            # st.markdown(current_files)
-
-            # Display token count & preview from session (stable across reruns)
             st.caption(f"Estimated tokens: {ss.get('course_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
             st.text_area("Preview", (ss.get("course_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
-    
+
+    st.divider()
+    cols = st.columns([2, 1])
+    with cols[1]:
+        st.button("Next: Design Outline →", on_click=lambda: ss.update({"key_outliner_nav": "Outline"}))
+
+def render_outliner_design():
+    st.header("Outline Design")
+    st.markdown("""Our AI agents received detailed guidance on instructional design best practices related to course outlines. They were also instructed to design outlines that satisfy the formal requreiments of IMF courses.
+                However, you can provide further instructions for generating or refining your course outline. Be parsimonious and rely on an iterative human-AI collaboration rather than trying to overload the AI with detailed requirements.
+                """)
     # Additional instructor guidance for the AI
-    #  In mock mode, pre-fill with example
     if ss["MOCK_MODE"]:
-        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 1 module only."
-    
+        ss["outline_guidance"] = "Title should be Public Debt Sustainability. Create 2 moduls."
+
     if "outline_guidance_key" not in ss:
         ss["outline_guidance_key"] = ss["outline_guidance"]
-    ss["outline_guidance"] = st.text_area("**Additional Guidance for the AI (optional)**",
-                                    key="outline_guidance_key",
-                                    help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
-                                    height=80, max_chars=300, disabled=ss["MOCK_MODE"])
+    ss["outline_guidance"] = st.text_area(
+        "**Additional Guidance for the AI (optional)**",
+        key="outline_guidance_key",
+        help="Enter any guidance for the AI to consider when generating the outline. For example, specify the number of modules, key topics to cover, or any special focus areas.",
+        height=80,
+        max_chars=300,
+        disabled=ss["MOCK_MODE"],
+    )
 
     # --- Generate Outline ---
-    #is_ready = bool(ss.get("course_text")) and ss.get("course_tokens", 0) <= const.MODULE_TOKEN_LIMIT
-    is_ready = True #bool(ss.get("course_text")) ! user can geenrate outline with no source material
-    if st.button("Generate Course Outline", type="primary", disabled=not is_ready):
+    is_ready_for_outline = ss["outliner_readiness"]["Outline"]
+    if st.button("Generate Course Outline", type="primary", disabled=not is_ready_for_outline,
+                 help="Select files from the knowledge base for your outline." if not is_ready_for_outline else ""):
         ss["editable_outline"] = False #reset to static view on new generation
         with st.spinner("Analyzing documents and generating outline... This may take a moment."):
             try:
@@ -240,18 +318,14 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
         else:
             display_static_outline(ss['outline'])
 
-        # current_outline_sig = sig_outline(ss.get("outline"))
-        # if ss.get("outline_sig") != current_outline_sig:
-        #     ss["outline_sig"] = current_outline_sig
-
         # --- Export outline ---
         st.markdown("---")
-        st.markdown("#### Export outline")
+        st.markdown("#### 📄 Export to Word")
 
         outline = ss.get("outline")
 
         st.download_button(
-            "Download outline",
+            "Download",
             data=lambda: build_outline_docx_cached(outline),
             file_name="course_outline.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -260,99 +334,44 @@ A course outline acts as a blueprint for the course, ensuring a goal-oriented, l
             type="primary" if bool(outline) else "secondary"
         )
 
-    # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[1]:
-        if st.button("Next: Module level planning →", disabled=not ss["is_ready_for_step"][2]):
-            ss["current_step"] = 2
-            st.rerun()
+    st.button("← Back: Materials for Outline", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
 
 ################################################
-# 2 Upload Module Content
+# Learning Objective Analyzer
 ################################################
-def render_step_2():
-    st.header("📂 Upload Module Material")  
-    st.markdown( """You can upload any content that you will use to develop the module.
-                A draft module plan works best, but you can also upload background papers, guidance notes,
-                presentations, or any other documents that you plan to use for writing the module content.""")
-    files: List[Any] = []
-    upload_col, import_col = st.columns([8, 3], gap="large", vertical_alignment="center")
-    with upload_col:
-        files = st.file_uploader(
-            "Maximum 27,000 tokens of text (about 20,000 words or 40 single-spaced pages)",
-            type=["pdf", "docx", "pptx", "txt"],
-            accept_multiple_files=True,
-            key=f"module_file_uploader_{ss['uploader_key']}",
-            disabled=ss["MOCK_MODE"],
-        ) or []
-        if ss["MOCK_MODE"]:
-            files = [const.create_mock_file("assets/mock_uploaded_file.txt")]
-    with import_col:
-        import_disabled = not bool(ss.get("course_text"))
-        if st.button(
-            "📥 Import source files from Outline step",
-            help="Import all source material uploaded for the course outline",
-            disabled=import_disabled,
-        ):
-            course_files = list(ss.get("course_files") or [])
-            apply_module_content(ss, ss.get("course_text", ""), ss.get("course_tokens", 0) or 0, course_files)
-            st.rerun()
+def render_lo_analysis_materials():
+    st.header("📂 Select Learning Objective Analysis Material")
+    st.markdown("""Select content from the Knowledge Base that you will use to analyze learning objectives.
+                A draft module plan works best, but you can also select background papers, guidance notes,
+                presentations, or any other supporting documents.""")
 
-# --- Process files based on actual content, not metadata ---
-    if files:
-        # Build cache key for current files
-        current_file_keys = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+    _render_material_selection("Learning Objective Analysis", "lo")
 
-        # Call the extractor (it will use Streamlit cache if file_keys is provided)
-        try:
-            text, tokens = extract_text_and_tokens(files, file_keys=current_file_keys)
-        except Exception as e:
-            st.error(e)
-            text, tokens = "", 0
+    selected_files, text, tokens = _selected_kb_payload("Learning Objective Analysis")
 
-        prev_module_text = ss.get("module_text", "")
-        apply_module_content(ss, text, tokens, [f.name for f in files])
-        
-        # Rerun if module content changed to update step readiness
-        if ss.get("module_text", "") != prev_module_text:
-            st.rerun()
+    prev_lo_material_text = ss.get("lo_material_text", "")
+    apply_lo_material_content(ss, text, tokens, selected_files)
+    if ss.get("lo_material_text", "") != prev_lo_material_text:
+        st.rerun()
 
-    if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
+    if ss.get("lo_material_tokens", 0) > const.MODULE_TOKEN_LIMIT:
         st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
 
-    if ss["module_files"]:
-        st.caption("Currently uploaded files (To change, use file picker above):")
-        current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
-        st.markdown(current_files)
+    if ss["lo_material_files"]:
         with st.expander("View extracted text", expanded=False):
-            # Display currently uploaded files from the session state (stable across reruns)
-            # if ss["module_files"]:
-            #     st.caption("Currently uploaded files (To change, use file picker above):")
-            #     current_files = "\n".join([f"{i+1}. {fname}" for i, fname in enumerate(ss["module_files"])])
-            #     st.markdown(current_files)
-
-            # Display token count & preview from session (stable across reruns)
-            st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+            st.caption(f"Estimated tokens: {ss.get('lo_material_tokens', 0):,}")
             st.caption("Preview first 5,000 characters")
-            st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
-    
-    # --- Navigation ---
-    st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Course Outline"):
-            ss["current_step"] = 1
-            st.rerun()
-    with cols[1]:
-        if st.button("Next: Define Objectives →", disabled=not ss["is_ready_for_step"][3]):
-            ss["current_step"] = 3
-            st.rerun()
+            st.text_area("Preview", (ss.get("lo_material_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
 
-################################################
-# 3 Objectives & Alignment
-################################################
-def render_step_3():
+    st.divider()
+    cols = st.columns([2, 1])
+    with cols[1]:
+        st.button("Next: Define and Analyze Objectives →",
+                  on_click=lambda: ss.update({"key_lo_analysis_nav": "Objectives"}),
+                  )
+
+def render_lo_analysis_objectives():
     help_objectives = """Enter your course learning objectives and the intented cognitive complexity
                     according to Bloom's Taxonomy. Don't worry if you are not familiar with Bloom's;
                     you will find information and tips below and AI will also help you refine your objectives."""
@@ -385,6 +404,7 @@ def render_step_3():
             - [Writing Course and Module Learning Objectives](https://intlmonetaryfund.sharepoint.com/teams/Section-OLTeam-ICDIP/Shared%20Documents/Forms/AllItems.aspx?id=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives%2FBloom%27s%20Taxonomy%20%2D%20Objectives%2Epdf&parent=%2Fteams%2FSection%2DOLTeam%2DICDIP%2FShared%20Documents%2FGeneral%2FOL%20Documentation%20and%20Templates%2FCourse%20Level%2F2%2E%20Design%2FCourse%20Level%20Design%2FHow%20to%20create%20objectives)
             """)
     st.write("---")
+    st.info("💡 Starting from scratch? You can write your own objectives below, or switch to the **Course Outliner** tool above to generate them, then import them here.")
 
     if ss["MOCK_MODE"] and not ss["los"]:
         ss["los"].append({
@@ -412,7 +432,7 @@ def render_step_3():
 
         # Invalidate finalization if LO text or level changes (compare to last finalized values)
         is_final = bool(lo.get("final_text"))
-        module_sig = ss.get("module_sig", "")
+        module_sig = ss.get("lo_material_sig", "")
         current_align_sig = sig_alignment(ss[lo_text_key], ss[lo_level_key], module_sig)
         prev_align_sig = lo.get("alignment_sig")
         if prev_align_sig and prev_align_sig != current_align_sig:
@@ -462,11 +482,11 @@ def render_step_3():
                              ):
                     with st.spinner("Checking alignment..."):
                         try:
-                            lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
+                            lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
                         except RuntimeError as err:
                             show_api_error(err)
                             return
-                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
+                        lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
                         st.rerun()
             with btn_cols[1]:
                 if st.button("Accept as final", key=f"accept_{lo['id']}_btn", disabled=not can_check):
@@ -520,7 +540,7 @@ def render_step_3():
             })
             st.rerun()
 
-    #Import LOs from Outline
+    # Import LOs from Outline
     def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
         collected: List[str] = []
         for section in module.get("sections", []) or []:
@@ -598,60 +618,88 @@ def render_step_3():
             import_lo_dialog(module_labels, label_to_index, outline_modules)  # <-- shows modal
 
 
-    # --- Check All / Accept All buttons ---
-    # st.write("")
-    # los_with_pending_alignment = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and lo.get("alignment") is None
-    # ]
-    # los_ready_to_accept = [
-    #     lo for lo in ss["los"]
-    #     if bool((lo.get("text") or "").strip())
-    #     and lo.get("intended_level") is not None
-    #     and not lo.get("final_text")
-    # ]
-    # all_btn_cols = st.columns([1, 1])
-    # with all_btn_cols[0]:
-    #     if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
-    #         with st.spinner("Checking all learning objectives..."):
-    #             for lo in los_with_pending_alignment:
-    #                 try:
-    #                     lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["module_text"])
-    #                 except RuntimeError as err:
-    #                     show_api_error(err)
-    #                     return
-    #                 lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("module_sig", ""))
-    #             st.rerun()
-    # with all_btn_cols[1]:
-    #     if st.button("Accept All", disabled=not los_ready_to_accept):
-    #         for lo in los_ready_to_accept:
-    #             lo["final_text"] = lo["text"]
-    #             # Invalidate questions if needed
-    #             current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
-    #             prev_gen_sig = lo.get("generation_sig")
-    #             if prev_gen_sig and prev_gen_sig != current_gen_sig:
-    #                 clear_questions(ss, lo["id"])
-    #                 lo["generation_sig"] = None
-    #         st.rerun()
+    #--- Check All / Accept All buttons ---
+    st.write("")
+    los_with_pending_alignment = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and lo.get("alignment") is None
+    ]
+    los_ready_to_accept = [
+        lo for lo in ss["los"]
+        if bool((lo.get("text") or "").strip())
+        and lo.get("intended_level") is not None
+        and not lo.get("final_text")
+    ]
+    all_btn_cols = st.columns([1, 1])
+    with all_btn_cols[0]:
+        if st.button("Check All", type="primary", disabled=not los_with_pending_alignment):
+            with st.spinner("Checking all learning objectives..."):
+                for lo in los_with_pending_alignment:
+                    try:
+                        lo["alignment"] = check_alignment(lo["text"], lo["intended_level"], ss["lo_material_text"])
+                    except RuntimeError as err:
+                        show_api_error(err)
+                        return
+                    lo["alignment_sig"] = sig_alignment(lo["text"], lo["intended_level"], ss.get("lo_material_sig", ""))
+                st.rerun()
+    with all_btn_cols[1]:
+        if st.button("Accept All", disabled=not los_ready_to_accept):
+            for lo in los_ready_to_accept:
+                lo["final_text"] = lo["text"]
+                # Invalidate questions if needed
+                current_gen_sig = sig_question_gen(lo.get("final_text"), lo["intended_level"], ss.get("module_sig", ""))
+                prev_gen_sig = lo.get("generation_sig")
+                if prev_gen_sig and prev_gen_sig != current_gen_sig:
+                    clear_questions(ss, lo["id"])
+                    lo["generation_sig"] = None
+            st.rerun()
 
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
+    cols = st.columns([2, 1])
     with cols[0]:
-        if st.button("← Back: Module Materials"):
-            ss["current_step"] = 2
-            st.rerun()
-    with cols[1]:
-        if st.button("Next: Generate Questions →", disabled=not ss["is_ready_for_step"][4]):
-            ss["current_step"] = 4
-            st.rerun()
+        st.button("← Back: Materials for LOs",
+                  on_click=lambda: ss.update({"key_lo_analysis_nav": "Materials"}),
+                  )
 
-#################################################
-# 4 Generate questions
-#################################################
-def render_step_4():
+
+################################################
+# Assessment Builder
+################################################
+def render_builder_materials():
+    st.header("📂 Select Module Material")
+    st.markdown("""Select content from the Knowledge Base that you will use to develop the module.
+                A draft module plan works best, but you can also select background papers, guidance notes,
+                presentations, or any other supporting documents.""")
+
+    _render_material_selection("Assessment Builder", "builder")
+
+    selected_files, text, tokens = _selected_kb_payload("Assessment Builder")
+
+    prev_module_text = ss.get("module_text", "")
+    apply_module_content(ss, text, tokens, selected_files)
+    if ss.get("module_text", "") != prev_module_text:
+        st.rerun()
+
+    if ss.get("module_tokens", 0) > const.MODULE_TOKEN_LIMIT:
+        st.error(f"Module exceeds {const.MODULE_TOKEN_LIMIT:,} tokens. Reduce content to proceed.")
+
+    if ss["module_files"]:
+        with st.expander("View extracted text", expanded=False):
+            st.caption(f"Estimated tokens: {ss.get('module_tokens', 0):,}")
+            st.caption("Preview first 5,000 characters")
+            st.text_area("Preview", (ss.get("module_text") or "")[:5000], height=150, disabled=True, label_visibility="collapsed")
+
+    st.divider()
+    cols = st.columns([2, 1])
+    with cols[1]:
+        st.button("Next: Generate Questions →",
+                  on_click=lambda: ss.update({"key_builder_nav": "Questions"}),
+                  )
+
+def render_builder_questions():
     st.header("✍️ Generate Questions")
     st.markdown(const.QUESTION_TIPS)
     # Helper to check if we can run generation
@@ -676,8 +724,9 @@ def render_step_4():
         row_cols[0].markdown(lo_display)
         row_cols[1].number_input("", min_value=0, max_value=5,
                                  key=nq_key, label_visibility="collapsed")
-
-    if st.button("Generate", type="primary", disabled=not can_generate(ss)):
+    is_ready_for_questions = ss["builder_readiness"]["Questions"]
+    if st.button("Generate Questions", type="primary", disabled=not is_ready_for_questions,
+                 help="Select source material and finalize learning objectives for question generation." if not is_ready_for_questions else ""):
         with st.spinner("Generating questions..."):
             ss["editable_questions"] = False #reset to static view on new generation
             # Go over all LOs and generate questions using per-LO n
@@ -705,8 +754,6 @@ def render_step_4():
                     ss.get("module_sig", "")
                 )
             ss["reset_question_counts"] = True
-            # After regeneration, update questions_sig
-            # ss["questions_sig"] = sig_questions(ss["questions"])
             st.rerun()
 
     # Check if there are any questions to display
@@ -726,7 +773,7 @@ def render_step_4():
     )
     # Go over all LOs, each in a container
     for lo in ss["los"]:
-        qs = ss["questions"].get(lo["id"], [])
+        qs = ss["questions"].setdefault(lo["id"], [])
         # if not qs:
         #     continue
         with st.container(border=True):
@@ -772,128 +819,190 @@ def render_step_4():
                     qs.append(create_empty_question())
                     st.rerun()
 
-    # # After all widgets have applied edits, detect real changes
-    # new_q_sig = sig_questions(ss.get("questions", {}))
-    # if ss.get("questions_sig") and ss["questions_sig"] != new_q_sig:
-    #     # User changed questions → previously built DOCX is now stale
-    #     ss["docx_file"] = "" #None
-    # ss["questions_sig"] = new_q_sig
+
+
+    # Export to Word
+    has_questions = any(ss["questions"].get(lo["id"], []) for lo in ss["los"])
+    if has_questions:
+        st.subheader("", divider="blue")
+        st.header("📄 Export to Word")
+        st.markdown("")
+
+        # Export selection: allow user to choose which metadata blocks to include
+        st.markdown("##### Metadata to be included with questions:")
+
+        # Seed checkbox states only once, on widget creation
+        for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
+            key = f"exp_inc_{block}"
+            if key not in ss:
+                ss[key] = ss['include_opts'].get(block, True)
+
+        cols = st.columns([1,1])
+        with cols[0]:
+            inc_lo = st.checkbox("Learning objectives", key="exp_inc_lo",
+                                help="Include the learning objective before its questions")
+            inc_bloom = st.checkbox("Bloom levels", key="exp_inc_bloom",
+                                    help="Show Bloom level for each LO")
+            inc_rationale = st.checkbox("Rationale for Bloom level", key="exp_inc_rationale",
+                                        help="Include rationale explaining the Bloom level")
+        with cols[1]:
+            inc_answer = st.checkbox("Answer", key="exp_inc_answer",
+                                    help="Show the correct answer option")
+            inc_feedback = st.checkbox("Feedback", key="exp_inc_feedback",
+                                    help="Include feedback / rationale for each option")
+            inc_content = st.checkbox("Content reference", key="exp_inc_content",
+                                    help="Include reference to module content for each question")
+        # Persist current selection
+        ss['include_opts'] = {
+            "lo": inc_lo,
+            "bloom": inc_bloom,
+            "answer": inc_answer,
+            "feedback": inc_feedback,
+            "content": inc_content,
+            "rationale": inc_rationale,
+        }
+
+        # Download button with on-the-fly generation (cached)
+        st.markdown("")
+        questions = ss.get("questions", {})
+        los = ss.get("los", [])
+        include = ss.get("include_opts", {})
+
+        doc_ready = bool(los) and bool(questions)
+
+        st.download_button(
+            "Download",
+            data=lambda: build_questions_docx_cached(
+                los,
+                questions,
+                include,
+            ),
+            file_name="assessment_questions.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            disabled=not doc_ready,
+            help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
+            type="primary" if doc_ready else "secondary"
+        )
 
     # --- Navigation ---
     st.divider()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("← Back: Define Objectives"):
-            ss["current_step"] = 3
-            st.rerun()
-    with cols[1]:
-        if st.button("Next: Export →", disabled=not ss["is_ready_for_step"][5]):
-            ss["current_step"] = 5
-            st.rerun()
-    
+    st.button("← Back: Materials for Questions",
+              on_click=lambda: ss.update({"key_builder_nav": "Materials"}),
+              )
+
+
+
 ################################################
-# 5 Export Questions
+# Main application router (navigation bar)
 ################################################
-def render_step_5():
 
-    st.header("📄 Export to Word")
-    st.markdown("")
+# Callback to manage navigation states
+def handle_nav(parent: str):
+    """Returns a callback function to handle navigation changes for a given parent component.
+    The callback ensures that if the navigation key is set to None, it reverts back to the current step.
+    Requires strict naming convention for session state keys.
+    """
+    if ss[f"key_{parent}_nav"] is None:
+        ss[f"key_{parent}_nav"] = ss[f"{parent}_step"]
+    else:
+        ss[f"{parent}_step"] = ss[f"key_{parent}_nav"]
 
-    # Export selection: allow user to choose which metadata blocks to include
-    st.markdown("##### Metadata to be included with questions:")
-
-    # Seed checkbox states only once, on widget creation
-    for block in ["lo", "bloom", "rationale", "answer", "feedback", "content"]:
-        key = f"exp_inc_{block}"
-        if key not in ss:
-            ss[key] = ss['include_opts'].get(block, True)
-
-    cols = st.columns([1,1])
-    with cols[0]:
-        inc_lo = st.checkbox("Learning objectives", key="exp_inc_lo",
-                              help="Include the learning objective before its questions")
-        inc_bloom = st.checkbox("Bloom levels", key="exp_inc_bloom",
-                                help="Show Bloom level for each LO")
-        inc_rationale = st.checkbox("Rationale for Bloom level", key="exp_inc_rationale",
-                                    help="Include rationale explaining the Bloom level")
-    with cols[1]:
-        inc_answer = st.checkbox("Answer", key="exp_inc_answer",
-                                 help="Show the correct answer option")
-        inc_feedback = st.checkbox("Feedback", key="exp_inc_feedback",
-                                   help="Include feedback / rationale for each option")
-        inc_content = st.checkbox("Content reference", key="exp_inc_content",
-                                  help="Include reference to module content for each question")
-    # Persist current selection
-    ss['include_opts'] = {
-        "lo": inc_lo,
-        "bloom": inc_bloom,
-        "answer": inc_answer,
-        "feedback": inc_feedback,
-        "content": inc_content,
-        "rationale": inc_rationale,
-    }
-
-    
-    
-    # cols = st.columns([1,1])
-    # with cols[0]:
-    #     if st.button("Build question DOCX"):
-    #         ss["docx_file"] = build_questions_docx(ss["los"], ss["questions"], include=ss['include_opts'])
-    #         ss["prev_build_inc_opts"] = ss['include_opts']
-    # with cols[1]:
-    #     no_docx_for_selection = not ss.get("docx_file") or ss['prev_build_inc_opts'] != ss['include_opts']
-    #     help_string = "⚠️ Build the DOCX file to enable download for the current selection." 
-    #     st.download_button(
-    #         "Download questions",
-    #         data=ss.get("docx_file", ""),
-    #         file_name="assessment_questions.docx",
-    #         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    #         disabled = no_docx_for_selection,
-    #         type="primary" if not no_docx_for_selection else "secondary",
-    #         help=help_string if no_docx_for_selection else ""
-    #         )        
-
-    # Download button with on-the-fly generation (cached)
-    st.markdown("")
-    questions = ss.get("questions", {})
-    los = ss.get("los", [])
-    include = ss.get("include_opts", {})
-
-    doc_ready = bool(los) and bool(questions)
-
-    st.download_button(
-        "Download",
-        data=lambda: build_questions_docx_cached(
-            los,
-            questions,
-            include,
-        ),
-        file_name="assessment_questions.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        disabled=not doc_ready,
-        help="Download questions as a Word file. The file will include the metadata you selected in the checkboxes.",
-        type="primary" if doc_ready else "secondary"
+# Top level navigation (tool choice)
+def render_tool_picker():
+    if "key_tool_nav" not in ss:
+        ss["key_tool_nav"] = ss["tool_step"]
+    st.segmented_control(
+        "Select Tool",
+        ["Knowledge Base", "Course Outliner", "Learning Objective Analysis", "Assessment Builder"],
+        selection_mode="single",
+        format_func=lambda x: f"**{x}**",
+        key="key_tool_nav",
+        on_change = handle_nav(parent = "tool"),
+        label_visibility="collapsed",
+        width="stretch",
     )
 
-    # --- Navigation ---
-    st.divider()
-    if st.button("← Back: Generate Questions"):
-        ss["current_step"] = 4
-        st.rerun()
+# Level-2 navigation and routing in Knowledge Base component
+def render_knowledge_base():
+    if "key_knowledge_base_nav" not in ss:
+        ss["key_knowledge_base_nav"] = ss["knowledge_base_step"]
+    st.pills(
+        "Knowledge Base Steps",
+        ["Upload"],
+        key="key_knowledge_base_nav",
+        on_change=handle_nav(parent="knowledge_base"),
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    render_knowledge_base_upload()
 
-################################################
-# Main application router
-################################################
+# Level-2 navigation and routing in Course Outliner component
+def render_course_outliner():
+    if "key_outliner_nav" not in ss:
+        ss["key_outliner_nav"] = ss["outliner_step"]
+    st.pills(
+        "Outliner Steps",
+        ["Materials", "Outline"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Outline" else x,
+        key="key_outliner_nav",
+        on_change=handle_nav(parent = "outliner"),
+        #default=ss.outliner_step,
+        label_visibility="collapsed",
+        width="stretch",
+        )   
+      
+    if ss["outliner_step"] == "Materials":
+        render_outliner_materials()
+    elif ss["outliner_step"] == "Outline":
+        render_outliner_design()
 
+# Level-2 navigation and routing in Learning Objective Analysis component
+def render_lo_analysis():
+    if "key_lo_analysis_nav" not in ss:
+        ss["key_lo_analysis_nav"] = ss["lo_analysis_step"]
+    st.pills(
+        "Learning Objective Analysis Steps",
+        ["Materials", "Objectives"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Objectives" else x,
+        key="key_lo_analysis_nav",
+        on_change=handle_nav(parent = "lo_analysis"),
+        label_visibility="collapsed",
+        width="stretch",
+        )
+
+    if ss["lo_analysis_step"] == "Materials":
+        render_lo_analysis_materials()
+    elif ss["lo_analysis_step"] == "Objectives":
+        render_lo_analysis_objectives()
+
+# Level-2 navigation and routing in Assessment Builder component
+def render_assessment_builder():
+    if "key_builder_nav" not in ss:
+        ss["key_builder_nav"] = ss["builder_step"]
+    st.pills(
+        "Assessment Steps",
+        ["Materials", "Questions"],
+        format_func=lambda x: f"{x} &emsp; >>>" if x != "Questions" else x,
+        key="key_builder_nav",
+        on_change=handle_nav(parent = "builder"),
+        label_visibility="collapsed",
+        width="stretch",
+        )
+
+    if ss["builder_step"] == "Materials":
+        render_builder_materials()
+    elif ss["builder_step"] == "Questions":
+        render_builder_questions()
+
+# Level-1 navigation between top components
+_ensure_mock_knowledge_files()
 compute_step_readiness(ss)
-render_stepper()
-if ss["current_step"] == 1:
-    render_step_1()
-elif ss["current_step"] == 2:
-    render_step_2()
-elif ss["current_step"] == 3:
-    render_step_3()
-elif ss["current_step"] == 4:
-    render_step_4()
-elif ss["current_step"] == 5:
-    render_step_5()
+render_tool_picker()
+if ss["tool_step"] == "Knowledge Base":
+    render_knowledge_base()
+elif ss["tool_step"] == "Course Outliner":
+    render_course_outliner()
+elif ss["tool_step"] == "Learning Objective Analysis":
+    render_lo_analysis()
+elif ss["tool_step"] == "Assessment Builder":
+    render_assessment_builder()
