@@ -3,6 +3,7 @@ import os
 import msal
 import json
 import random
+import backoff
 import streamlit as st
 from openai import OpenAI
 from typing import Dict, Any
@@ -16,7 +17,7 @@ from . import constants as const
 ss = st.session_state
 
 DEFAULT_MODEL = "gpt-4.1"
-TOKEN_BUFFER = 25_000
+TOKEN_BUFFER = 15_000
 
 
 class ApiRequestError(RuntimeError):
@@ -248,28 +249,77 @@ def _collect_exception_debug(exc: Exception) -> Dict[str, Any]:
     return debug
 
 
+def _is_retryable_api_error(exc: Exception) -> bool:
+    """Return True when the OpenAI error is transient and should be retried."""
+    retryable_status_codes = {408, 409, 429, 500, 502, 503, 504}
+    status_code = _safe_attr(exc, "status_code")
+    if status_code in retryable_status_codes:
+        return True
+
+    exception_type = type(exc).__name__
+    retryable_exception_types = {
+        "RateLimitError",
+        "APIConnectionError",
+        "APITimeoutError",
+        "InternalServerError",
+    }
+    if exception_type in retryable_exception_types:
+        return True
+
+    body = _to_debug_primitive(_safe_attr(exc, "body"))
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            code = error.get("code")
+            if isinstance(code, str) and code.lower() in {
+                "rate_limit_exceeded",
+                "too_many_requests",
+            }:
+                return True
+
+    return False
+
+
+@backoff.on_exception(
+    backoff.expo,
+    Exception,
+    jitter=backoff.full_jitter,
+    max_tries=6,
+    giveup=lambda exc: not _is_retryable_api_error(exc),
+)
+def _create_response_with_backoff(client: OpenAI, model: str, system: str, user: str, max_tokens: int) -> Any:
+    """Call Responses API with exponential backoff + jitter for transient failures."""
+    return client.responses.create(  # type: ignore
+        model=model,
+        input=[
+            {
+                "role": "system",
+                "content": [{"type": "input_text", "text": system}],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": user}],
+            },
+        ],
+        #temperature=temperature,
+        text={"format": {"type": "json_object"}},
+        max_output_tokens=max_tokens,
+    )
+
+
 def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
     if _is_mock_mode():
         return {"mock":"on"}
     client = _get_client()
     model = _get_model()
-    requested_max_tokens = max_tokens + TOKEN_BUFFER
+    requested_max_tokens = max_tokens if model == "gpt-4.1" else max_tokens + TOKEN_BUFFER # add buffer for reasoning models
     try:
-        resp = client.responses.create( # type: ignore
+        resp = _create_response_with_backoff(
+            client=client,
             model=model,
-            input=[
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system}],
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": user}],
-                },
-            ],
-            #temperature=temperature,
-            text={"format": {"type": "json_object"}},
-            max_output_tokens=requested_max_tokens,
+            system=system,
+            user=user,
+            max_tokens=requested_max_tokens,
         )
     except Exception as e:
         exception_debug = _collect_exception_debug(e)
