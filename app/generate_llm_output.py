@@ -16,7 +16,7 @@ from . import constants as const
 ss = st.session_state
 
 DEFAULT_MODEL = "gpt-4.1"
-TOKEN_BUFFER = 25_000
+TOKEN_BUFFER = 15_000
 
 
 class ApiRequestError(RuntimeError):
@@ -253,7 +253,7 @@ def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[st
         return {"mock":"on"}
     client = _get_client()
     model = _get_model()
-    requested_max_tokens = max_tokens + TOKEN_BUFFER
+    requested_max_tokens = max_tokens if model == "gpt-4.1" else max_tokens + TOKEN_BUFFER # add buffer for reasoning models
     try:
         resp = client.responses.create( # type: ignore
             model=model,
