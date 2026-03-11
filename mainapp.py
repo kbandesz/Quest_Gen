@@ -89,13 +89,13 @@ with st.sidebar:
         reset_session(ss)
 
 
+################################################
+# Knowledge Base
+################################################
+# Helpers for managing file uploads and selections across the app
 def _extract_single_uploaded_file(uploaded_file) -> Tuple[str, int]:
     file_key = ((uploaded_file.name, getattr(uploaded_file, "size", None), getattr(uploaded_file, "last_modified", None)),)
     return extract_text_and_tokens([uploaded_file], file_keys=file_key)
-
-
-
-
 
 def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
     with open(file_path, "r", encoding="utf-8") as handle:
@@ -107,7 +107,6 @@ def _build_mock_kb_entry(file_name: str, file_path: str) -> Dict[str, Any]:
         "tokens": len(wrapped.split()),
         "size": len(content.encode("utf-8")),
     }
-
 
 def _ensure_mock_knowledge_files() -> None:
     """Seed mock knowledge files once per entry into mock mode."""
@@ -169,9 +168,74 @@ def _render_material_selection(tool_name: str, state_prefix: str):
         ss["tool_file_selection"][tool_name] = []
         st.info("No files available. Go to **Knowledge Base → Upload** to add source materials.")
 
+# Knowledge Base Upload UI
+def render_knowledge_base_upload():
+    st.header("🗂️ Knowledge Base")
+    st.markdown("Upload source files once, then select them in each tool's Materials step.")
+    st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
+
+    if ss["MOCK_MODE"]:
+        st.info("Mock mode is enabled: the Knowledge Base uploader is disabled and preloaded with two mock files.")
+
+    files = st.file_uploader(
+        "Upload knowledge files",
+        help="Supported formats: pdf, docx, pptx, txt",
+        type=["pdf", "docx", "pptx", "txt"],
+        accept_multiple_files=True,
+        key=f"kb_file_uploader_{ss['uploader_key']}",
+        disabled=ss["MOCK_MODE"],
+    ) or []
+
+    if not files:
+        ss.pop("kb_uploader_sig", None)
+
+    if files and not ss["MOCK_MODE"]:
+        current_upload_sig = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
+        if ss.get("kb_uploader_sig") != current_upload_sig:
+            with st.spinner("Extracting text. Please wait..."):
+                for uploaded_file in files:
+                    try:
+                        text, tokens = _extract_single_uploaded_file(uploaded_file)
+                    except Exception as exc:
+                        st.error(exc)
+                        continue
+                    ss["knowledge_files"][uploaded_file.name] = {
+                        "name": uploaded_file.name,
+                        "text": text,
+                        "tokens": tokens,
+                        "size": getattr(uploaded_file, "size", 0),
+                    }
+            ss["kb_uploader_sig"] = current_upload_sig
+            ss["uploader_key"] = ss.get("uploader_key", 0) + 1
+            st.success("Knowledge Base updated.")
+            st.rerun()
+
+    if ss.get("knowledge_files"):
+        st.markdown("#### Uploaded files")
+        for file_name in list(ss["knowledge_files"].keys()):
+            payload = ss["knowledge_files"][file_name]
+            row_cols = st.columns([6, 2, 1], vertical_alignment="center")
+            row_cols[0].markdown(f"**{file_name}**")
+            row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
+            if row_cols[2].button("🗑️", key=f"drop_kb_{file_name}", help="Drop file from knowledge base"):
+                selected_in = [
+                    tool_name
+                    for tool_name, selected_files in (ss.get("tool_file_selection") or {}).items()
+                    if file_name in (selected_files or [])
+                ]
+                if selected_in:
+                    st.warning(
+                        f"Cannot drop '{file_name}' because it is selected in: {', '.join(selected_in)}. "
+                        "Please unselect it in those tools first."
+                    )
+                else:
+                    ss["knowledge_files"].pop(file_name, None)
+                    st.rerun()
+    else:
+        st.info("No files uploaded yet.")
 
 ################################################
-# Course Outliner: Materials
+# Course Outliner
 ################################################
 def render_outliner_materials():
     st.header("📚 Course Outline")
@@ -254,10 +318,6 @@ def render_outliner_design():
         else:
             display_static_outline(ss['outline'])
 
-        # current_outline_sig = sig_outline(ss.get("outline"))
-        # if ss.get("outline_sig") != current_outline_sig:
-        #     ss["outline_sig"] = current_outline_sig
-
         # --- Export outline ---
         st.markdown("---")
         st.markdown("#### 📄 Export to Word")
@@ -278,7 +338,7 @@ def render_outliner_design():
     st.button("← Back: Materials for Outline", on_click=lambda: ss.update({"key_outliner_nav": "Materials"}))
 
 ################################################
-# Assessment Builder: Materials
+# Learning Objective Analyzer
 ################################################
 def render_lo_analysis_materials():
     st.header("📂 Select Learning Objective Analysis Material")
@@ -480,7 +540,7 @@ def render_lo_analysis_objectives():
             })
             st.rerun()
 
-    #Import LOs from Outline
+    # Import LOs from Outline
     def _collect_module_objectives(module: Dict[str, Any]) -> List[str]:
         collected: List[str] = []
         for section in module.get("sections", []) or []:
@@ -606,7 +666,7 @@ def render_lo_analysis_objectives():
 
 
 ################################################
-# Assessment Builder: Materials
+# Assessment Builder
 ################################################
 def render_builder_materials():
     st.header("📂 Select Module Material")
@@ -831,85 +891,6 @@ def render_builder_questions():
               )
 
 
-def render_knowledge_base_upload():
-    st.header("🗂️ Knowledge Base")
-    st.markdown("Upload source files once, then select them in each tool's Materials step.")
-    st.caption("If you upload a file with the same filename again, the new upload replaces the previous one.")
-
-    if ss["MOCK_MODE"]:
-        st.info("Mock mode is enabled: the Knowledge Base uploader is disabled and preloaded with two mock files.")
-
-    files = st.file_uploader(
-        "Upload knowledge files",
-        help="Supported formats: pdf, docx, pptx, txt",
-        type=["pdf", "docx", "pptx", "txt"],
-        accept_multiple_files=True,
-        key=f"kb_file_uploader_{ss['uploader_key']}",
-        disabled=ss["MOCK_MODE"],
-    ) or []
-
-    if not files:
-        ss.pop("kb_uploader_sig", None)
-
-    if files and not ss["MOCK_MODE"]:
-        current_upload_sig = tuple((f.name, getattr(f, "size", None), getattr(f, "last_modified", None)) for f in files)
-        if ss.get("kb_uploader_sig") != current_upload_sig:
-            with st.spinner("Extracting text. Please wait..."):
-                for uploaded_file in files:
-                    try:
-                        text, tokens = _extract_single_uploaded_file(uploaded_file)
-                    except Exception as exc:
-                        st.error(exc)
-                        continue
-                    ss["knowledge_files"][uploaded_file.name] = {
-                        "name": uploaded_file.name,
-                        "text": text,
-                        "tokens": tokens,
-                        "size": getattr(uploaded_file, "size", 0),
-                    }
-            ss["kb_uploader_sig"] = current_upload_sig
-            ss["uploader_key"] = ss.get("uploader_key", 0) + 1
-            st.success("Knowledge Base updated.")
-            st.rerun()
-
-    if ss.get("knowledge_files"):
-        st.markdown("#### Uploaded files")
-        for file_name in list(ss["knowledge_files"].keys()):
-            payload = ss["knowledge_files"][file_name]
-            row_cols = st.columns([6, 2, 1], vertical_alignment="center")
-            row_cols[0].markdown(f"**{file_name}**")
-            row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
-            if row_cols[2].button("🗑️", key=f"drop_kb_{file_name}", help="Drop file from knowledge base"):
-                selected_in = [
-                    tool_name
-                    for tool_name, selected_files in (ss.get("tool_file_selection") or {}).items()
-                    if file_name in (selected_files or [])
-                ]
-                if selected_in:
-                    st.warning(
-                        f"Cannot drop '{file_name}' because it is selected in: {', '.join(selected_in)}. "
-                        "Please unselect it in those tools first."
-                    )
-                else:
-                    ss["knowledge_files"].pop(file_name, None)
-                    st.rerun()
-    else:
-        st.info("No files uploaded yet.")
-
-
-def render_knowledge_base():
-    if "key_knowledge_base_nav" not in ss:
-        ss["key_knowledge_base_nav"] = ss["knowledge_base_step"]
-    st.pills(
-        "Knowledge Base Steps",
-        ["Upload"],
-        key="key_knowledge_base_nav",
-        on_change=handle_nav(parent="knowledge_base"),
-        label_visibility="collapsed",
-        width="stretch",
-    )
-    render_knowledge_base_upload()
-
 
 ################################################
 # Main application router (navigation bar)
@@ -940,6 +921,20 @@ def render_tool_picker():
         label_visibility="collapsed",
         width="stretch",
     )
+
+# Level-2 navigation and routing in Knowledge Base component
+def render_knowledge_base():
+    if "key_knowledge_base_nav" not in ss:
+        ss["key_knowledge_base_nav"] = ss["knowledge_base_step"]
+    st.pills(
+        "Knowledge Base Steps",
+        ["Upload"],
+        key="key_knowledge_base_nav",
+        on_change=handle_nav(parent="knowledge_base"),
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    render_knowledge_base_upload()
 
 # Level-2 navigation and routing in Course Outliner component
 def render_course_outliner():
