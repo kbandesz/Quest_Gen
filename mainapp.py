@@ -46,7 +46,7 @@ init_session_state(ss)
 # Title and warning based on current mock setting
 mock_warning = ":red[MOCK MODE]"
 st.title(f":rainbow[BEACON-Design] {mock_warning if ss['MOCK_MODE'] else ''}")
-st.markdown(f"##### _Smarter course design—powered by AI._")
+st.markdown("##### _Smarter course design—powered by AI._")
 
 ################################################
 # Sidebar for settings & save/load
@@ -212,11 +212,18 @@ def render_knowledge_base_upload():
 
     if ss.get("knowledge_files"):
         st.markdown("#### Uploaded files")
+
+        header_cols = st.columns([6, 2, 1], vertical_alignment="center")
+        header_cols[1].markdown("**Tokens**")
+
+        total_tokens = 0
         for file_name in list(ss["knowledge_files"].keys()):
             payload = ss["knowledge_files"][file_name]
+            file_tokens = int(payload.get("tokens", 0) or 0)
+            total_tokens += file_tokens
             row_cols = st.columns([6, 2, 1], vertical_alignment="center")
             row_cols[0].markdown(f"**{file_name}**")
-            row_cols[1].caption(f"Tokens: {int(payload.get('tokens', 0) or 0):,}")
+            row_cols[1].caption(f"{file_tokens:,}")
             if row_cols[2].button("🗑️", key=f"drop_kb_{file_name}", help="Drop file from knowledge base"):
                 selected_in = [
                     tool_name
@@ -231,6 +238,10 @@ def render_knowledge_base_upload():
                 else:
                     ss["knowledge_files"].pop(file_name, None)
                     st.rerun()
+
+        footer_cols = st.columns([6, 2, 1], vertical_alignment="center")
+        footer_cols[0].markdown(":blue[**TOTAL**]")
+        footer_cols[1].markdown(f":blue[**{total_tokens:,}**]")
     else:
         st.info("No files uploaded yet.")
 
