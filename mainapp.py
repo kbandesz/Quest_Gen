@@ -69,7 +69,7 @@ with st.sidebar:
 
     st.toggle("Mock mode", key="mock_mode_toggle", on_change=_handle_mock_mode_toggle)
     # Select model
-    model_options = ["gpt-4.1", "gpt-5-mini", "gpt-5", "gpt-5.2"]
+    model_options = ["gpt-4.1", "gpt-4.1-mini", "gpt-5-mini", "gpt-5", "gpt-5.2"]
 
     current_model = ss.get("OPENAI_MODEL")
     if current_model not in model_options:
