@@ -301,13 +301,12 @@ def _create_response_with_backoff(client: OpenAI, model: str, system: str, user:
                 "content": [{"type": "input_text", "text": user}],
             },
         ],
-        #temperature=temperature,
         text={"format": {"type": "json_object"}},
         max_output_tokens=max_tokens,
     )
 
 
-def _chat_json(system:str, user:str, max_tokens:int, temperature:float)->Dict[str,Any]:
+def _chat_json(system:str, user:str, max_tokens:int)->Dict[str,Any]:
     if _is_mock_mode():
         return {"mock":"on"}
     client = _get_client()
@@ -350,7 +349,11 @@ def generate_outline(outline_guidance:str, source_material:str)->Dict[str,Any]:
     if _is_mock_mode():
         return const.generate_mock_outline()
     user_prompt=prompts.build_outline_user_prompt(outline_guidance, source_material)
-    obj=_chat_json(prompts.OUTLINE_SYSTEM_PROMPT, user_prompt, max_tokens=6000, temperature=0.4)
+    obj=_chat_json(
+        prompts.get_outline_system_prompt(_get_model()),
+        user_prompt,
+        max_tokens=6000,
+    )
     return obj
 
 
@@ -359,7 +362,11 @@ def check_alignment(lo_text:str, intended_level:str, module_text:str)->Dict[str,
         # Return a randomized mock scenario to exercise UI branches
         return const.generate_mock_alignment_result(lo_text, intended_level)
     user_prompt=prompts.build_align_user_prompt(lo_text, intended_level, module_text)
-    obj=_chat_json(prompts.ALIGN_SYSTEM_PROMPT, user_prompt, max_tokens=2000, temperature=0.2)
+    obj=_chat_json(
+        prompts.get_align_system_prompt(_get_model()),
+        user_prompt,
+        max_tokens=2000,
+    )
     try:
         return validate_alignment_payload(obj)
     except ValueError as validation_error:
@@ -374,7 +381,11 @@ def generate_questions(final_lo_text:str, bloom_level:str, module_text:str, n_qu
         obj = const.generate_mock_questions(n_questions)
     else:
         user_prompt=prompts.build_questgen_user_prompt(bloom_level, final_lo_text, module_text, n_questions)
-        obj=_chat_json(prompts.QUESTGEN_SYSTEM_PROMPT, user_prompt, max_tokens=4000, temperature=0.4)
+        obj=_chat_json(
+            prompts.get_questgen_system_prompt(_get_model()),
+            user_prompt,
+            max_tokens=4000,
+        )
 
     reshuffle_question_options(obj)
 
