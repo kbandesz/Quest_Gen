@@ -290,14 +290,14 @@ def save_progress_ui():
         st.download_button(
             "Save",
             data=payload.encode("utf-8"),
-            file_name=f"{fname}.json",
+            file_name=f"{fname}.bcn",
             mime="application/json",
             disabled=not fname
         )
 
 def load_progress_ui():
     with st.form("load_form", clear_on_submit=True):
-        uploaded = st.file_uploader("Choose file (.json)", type=["json"])
+        uploaded = st.file_uploader("Choose file (.bcn)", type=["bcn"])
         submitted = st.form_submit_button("Load", key="load_state_btn")
         if submitted and uploaded:
             try:
